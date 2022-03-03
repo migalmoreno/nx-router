@@ -1,0 +1,167 @@
+#+title: nx-mapper
+=nx-mapper= is an extension for the [[https://nyxt.atlas.engineer/][Nyxt]] browser which aims to reduce the friction between the user mappings in day-to-day browsing behavior. Its purpose is to try to become a unified solution to problems which would have otherwise required numerous extensions in conventional browsers. Currently, it consists of two smaller sub-extensions for which one can define configuration "/mappings/" to extract a particular behavior: =stylor-mode= and =rural-mode=.
+
+* Installation
+To install the extension, one can simply download the source and place it in Nyxt's extensions path, by default given by the value of =(nyxt-source-registry)=, =~/.local/share/nyxt/extensions=.
+
+However, if one wants to place the extension elsewhere in their system, such as for development purposes, they can configure so via the ASDF source registry mechanism. As such, one would have to create a file in their source registry directory, =~/.config/common-lisp/source-registry.conf.d/=, and then put the following contents to it, where one is to replace the path with the desired system path.
+
+#+name: 10-personal-lisp.conf
+#+begin_src lisp
+(:tree "/path/to/user/location")
+#+end_src
+
+Then, one would have to refresh the ASDF cache via =asdf:clear-source-registry=. Now, ASDF will be able to find the extension on the custom path. For more information on this utility, please refer to the [[https://asdf.common-lisp.dev/asdf.html][ASDF manual]].
+
+However, by default Nyxt won't read the custom source registry path we provided, so one has to ensure to include a =reset-asdf-registries= invocation in their Nyxt's initialization file too.
+
+Then, in the init file, one should include what follows.
+
+#+begin_src lisp
+(asdf:load-after-system :nx-mapper (nyxt-init-file "/path/to/mapper.lisp"))
+#+end_src
+
+Where =/path/to/mapper.lisp= is a custom file that should be created to provide the extension settings after the =nx-mapper= system has been successfully loaded. Inside this file, one can take two approaches when it comes to supplying the extension options, as described by the following.
+
+#+begin_src lisp
+(define-configuration nx-mapper:settings
+  ((nx-mapper/stylor-mode:scripts
+    ;; provide all the mappings
+    )
+   ;; one can provide the additional extension slots
+   ))
+#+end_src
+
+As one might notice from the above, one can bundle everything into the global =nx-mapper:settings= class, but optionally one can configure everything per sub-extension too.
+
+#+begin_src elisp
+(define-cofniguration nx-mapper/stylor-mode:settings
+  ;; stylor-mode slots
+  )
+
+(define-configuration nx-mapper/rural-mode:settings
+  ;; rural-mode slots
+  )
+#+end_src
+
+* Configuration
+
+** stylor-mode
+/stylor-mode/ acts like a userscript and userstyle manager for the [[https://nyxt.atlas.engineer/][Nyxt]] web browser. It aims to provide users with enough flexibility and freedom to define custom themes for the browser. Its functionality is split into three core parts:
+
+- Internal themes :: these tweak the overall browser's interface elements and allow one to change the browser's appearance on the fly.
+- External themes :: these map sources that act like triggers for which to apply CSS styles. These triggers are in the form of URL predicates and styles can be supplied as CSS strings, local path names, URLs where remote style sheets are hosted, or a function which takes the current internal theme and uses it style the CSS. The latter is a nifty feature which allows one to share internal and external themes, achieving a more consistent look if that's something the user is interested in for a given site.
+- Scripts :: these also map sources which act like triggers for which an arbitrary JavaScript snippet will be executed. This is slightly more powerful than just altering the look via themes, as it also allows one to tweak the behavior of sites.
+
+Therefore, using these three concepts, one could include the following configuration in their Nyxt initialization file.
+
+#+begin_src elisp
+(import 'nx-mapper:make-mapping)
+
+(define-configuration nx-mapper/stylor-mode:settings
+  ((nx-mapper/stylor-mode:scripts
+    (list
+     (make-mapping "FSF" '(match-domain "fsf.org")
+                   :script (ps:ps (setf (ps:@ document body |innerHTML|)
+                                        "This was invoked by some sample JavaScript.")))))
+   (nx-mapper/stylor-mode:external-themes
+    (list
+     (make-mapping "GitHub" '(match-domain "github.com")
+                   :style (cl-css:css '((|.pagehead-actions,.mt-2|
+                                         :display "none !important"))))
+     (make-mapping "Lisp Documentation" '(match-domain "lisp.se" "lispworks.com")
+                   :style (lambda (theme)
+                             (theme:themed-css theme
+                               (*
+                                :background-color theme:background
+                                :color theme:text))))
+     (make-mapping "Medium" '(match-domain "medium")
+                    :style (asdf:system-relative-pathname :nx-mapper "styles/medium.css"))
+     (make-mapping "Nord Startpage" '(match-domain "startpage.com")
+                   :style (quri:uri "https://bpa.st/raw/4WYA"))))
+   (nx-mapper/stylor-mode:internal-themes
+    (list
+     (make-mapping "Modus Operandi" nil
+                   :background-color "white"
+                   :text-color "black"
+                   :primary-color "#093060"
+                   :secondary-color "#f0f0f0"
+                   :tertiary-color "#dfdfdf"
+                   :quaternary-color "#005a5f"
+                   :accent-color "#8f0075"
+                   :font-family "Iosevka"
+                   :stylist (make-instance 'nx-mapper/stylor-mode:user-stylist))
+     (make-mapping "Modus Vivendi" nil
+                   :dark-p t
+                   :background-color "black"
+                   :text-color "white"
+                   :primary-color "#c6eaff"
+                   :secondary-color "#323232"
+                   :tertiary-color "#323232"
+                   :quaternary-color "#a8a8a8"
+                   :accent-color "#afafef"
+                   :font-family "Iosevka"
+                   :stylist (make-instance 'nx-mapper/stylor-mode:user-stylist))))))
+#+end_src
+
+The above configuration initially defines a script mapping called ="FSF"= which matches on the =fsf.org= domain, thereby triggering the script provided by the =:script= initarg, which in this case will simply change the page's internal contents to effectively just show the string "/This was invoked by some sample JavaScript/".
+
+The next set of rules involve external themes, which carry the same principle as scripts in that it maps a set of predicates to an external style specified by the =:style= initarg. As previously outlined, this style can be in the form of a CSS string, such as the one specified by the ="GitHub"= mapping (which uses the library =cl-css= that compiles Common Lisp into a CSS string). It can also take a function that has the current active theme as argument, such as the example provided in the ="Lisp Documentation"= mapping, which will essentially provide the same background and text color as the current internal theme for the whole site. If the style sheet becomes too big or one would like to use their favorite editor to tweak it, one can optionally also provide a pathname pointing to the CSS file. Finally, if one has their styles remotely backed up or they stumble upon one they like, they can point to their URL and it will be applied.
+
+Finally, there's the internal themes rules, where as we can see from the above we have to issue a name for the mapping, and then a set of theme attributes which are built into the =nyxt/theme= library that ships with the browser as of version =2.2.4=. In addition to these, each internal theme can take a "/stylist/", described as a custom style /crafter/ that allows one to style specific elements of the browser's interface  if they aren't satisfied with the layout of the mode line, for instance.
+
+** rural-mode
+=rural-mode= is an extension which enables fine-grained control over URL associations. Even though the Nyxt team is already working on a solution by =no-procrastinate-mode= which prevents the access to certain hosts as per [[https://github.com/atlas-engineer/nyxt/pull/1771][#1771]], as well as =blocker-mode=, which can also be leveraged to block the access to arbitrary hosts, I find that declaratively specifying these mappings in a consistent syntax and without having to rely on multiple external files is more cohesive. Therefore, one can set up a configuration for a host such as what follows in their Nyxt initialization file.
+
+#+begin_src lisp
+(import 'nx-mapper:make-mapping)
+
+(define-configuration nx-mapper/rural-mode:settings
+  ((nx-mapper/rural-mode:url-mappings
+    (list
+     (make-mapping "Instagram" '((match-domain "instagram.com")
+                                 (match-regex "https://bibliogram.*")
+                   :redirect '("insta.trom.tf" (:path (("/u" (not "/" "/p/" "/tv")))))
+                   :instances (lambda ()
+                                (delete
+                                 nil
+                                 (mapcar (lambda (instance)
+                                           (unless (str:emptyp
+                                                    (alex:assoc-value instance :url))
+                                             (alex:assoc-value instance :url)))
+                                         (json:with-decoder-simple-list-semantics
+                                           (json:decode-json-from-string (dex:get "https://teddit.net/instances.json"))))))))
+     (make-mapping "Reddit" '(match-domain "reddit.com")
+                   :redirect "teddit.namazso.eu"
+                   :blocklist '((:path ((:contains (not "/comments"))))))
+     (make-mapping "Audio" '((match-regex ".*/watch\\?v=.*")
+                             (match-file-extension "mp3")
+                   :redirect "youtube.com"
+                   :external (lambda (data)
+                               (eval-in-emacs
+                                `(init-multimedia-mpv-start ,(quri:render-uri (url data)) :audio-only t :repeat t)))))
+     (make-mapping "Amazon" '(match-domain "amazon.com")
+                   :blocklist '((:host ((:starts (not "smile"))))))
+     (make-mapping "Lemmy" '(match-domain "lemmy.ml")
+                   :blocklist '((:path ((:starts (not "/post"))
+                                        (:contains (not "image")))))))))
+#+end_src
+
+From the above, the first mapping will configure all Instagram requests to redirect to the host =insta.trom.tf= and additionally to redirect all of its paths which don't start with =/=, =/p/=, or =/tv= to =/u= paths, as this is what the [[https://bibliogram.art/][Bibliogram]] alternative Instagram front-end uses for its URL structure. Do note this mapping also takes an =instances= slot, which can be either a list or a function that will compute a list of instances. This is useful if the service used to redirect the predicates offers a list of predefined instances, and these will also be added to the mapping's predicates on mapping instantiation. Indeed, mapping sources can also consist of lists of predicates for which to match URLs, which means on the ="Instagram"= mapping above, it will match either domains that contain =instagram.com= or URLs that contain the regexp starting with =https://bibliogram.*=. This was added to allow for more granularity and so blocklists can also target hostnames.
+
+The second mapping from above will redirect all Reddit requests to the =teddit.namazso.eu= host and additionally block all of the paths pertaining to such host except the ones that contain the =/comments= section. This would essentially limit the user to only being able to access Reddit publications instead of sections like its main feed.
+
+The third mapping matches on YouTube video URLs, which could also be hosted on alternative services such as [[https://invidious.io/][Invidious]], as well as MP3 files, and redirect all of these requests to =youtube.com=, and dispatch a rule which invokes an exernal program with the current request data, in this case launching an [[https://mpv.io/][mpv]] player IPC client process to control the player from Emacs. Do note this is a custom function from my configuration, but one could also pass a string such as =mpv --video=no %s= to the =:external= slot if they prefer not to use a Lisp form.
+
+The fourth mapping showcases the use of a hostname blocklist, which in this case would prevent the user from accessing Amazon URLs unless they contain the =smile.= hostname.
+
+The fifth mapping only consists of a blocklist for certain paths of the =lemmy.ml= domain; namely, those that don't start with either =/post= or that don't contain the =image= string in them.
+
+As one might be able to notice, the extension's aim is to offer the user full flexibility when it comes to the kind of behavior they want to trigger on a certain predicate or predicates on the web, so they can mold their browsing experience according to their preferences.
+
+** Customization Interface
+For those who aren't well versed with Lisp yet or don't like to tweak around configuration files, a customization interface is provided through the =customize-mappings= command, which will show a two-paned settings page consisting of an automatically generated code snippet to be pasted in the user's Nyxt initialization file on the left pane and the actual extension settings on the right pane.
+
+Thus, the user can tweak the configuration on the right pane, being able to add, delete, and edit mappings as well as seeing their information in a more user-friendly interface, which is especially useful if they aren't used to a language with lots parentheses. Changes will see themselves reflected on the left pane as the user changes them, but it's important to note these will only persist for the current Nyxt session and it's thereby crucial one copies them over to their configuration so they get persisted.
+
+Moreover, there are some interactive commands like =select-internal-theme= which also allow the user to change the current theme on the fly without having to change their configuration.
