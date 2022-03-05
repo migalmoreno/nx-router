@@ -208,11 +208,8 @@ Nyxt initialization file."
            (:raw (nx-mapper::show-mapping-sources sources))
            (typecase style-mapping
              (quri:uri
-              ;; TODO: why is this not working? Passing over the buffer variable always brings trouble
-               ;; (:pre (:code (nyxt/style-mode::open-or-cache-url (nyxt:find-mode buffer 'stylor-mode)
-              ;;                                                  (nyxt:render-url style-mapping))))
-              (:p "The style is located at " (:a :href (nyxt:render-url style-mapping)
-                                                 (nyxt:render-url style-mapping))))
+               (:pre (:code (nyxt/style-mode::open-or-cache-url (nyxt:find-mode buffer 'stylor-mode)
+                                                               (nyxt:render-url style-mapping)))))
              (pathname
               (:pre (:code (uiop:read-file-string style-mapping))))
              (function (:pre
@@ -285,14 +282,31 @@ Nyxt initialization file."
       (:p "The following allow one to tweak the behavior of a site via JavaScript.")
       (:div
        (:button :class "button"
-                :onclick (ps:ps (nyxt/ps:lisp-eval '(nx-mapper:add-mapping )))
+                :onclick (ps:ps (nyxt/ps:lisp-eval '(nx-mapper:add-mapping
+                                                     'nx-mapper/stylor-mode:script
+                                                     'nx-mapper/stylor-mode:scripts)))
                 "+ Add script"))
       (dolist (script scripts)
-        (let ((name (nx-mapper:name))
+        (let ((name (nx-mapper:name script))
+              (script-mapping (nx-mapper/stylor-mode:script script))
               (sources (delete nil (nx-mapper/stylor-mode:source script))))
           (:div
            (:h3 name)
-           (:raw (nx-mapper::show-mapping-sources sources))))))))
+           (:raw (nx-mapper::show-mapping-sources sources))
+           (typecase script-mapping
+             ;; (quri:uri
+             ;;   (:pre (:code (nyxt/style-mode::open-or-cache-url (nyxt:find-mode buffer 'stylor-mode)
+             ;;                                                   (nyxt:render-url style-mapping))))
+             ;;  ;; (:p "The style is located at " (:a :href (nyxt:render-url style-mapping)
+             ;;  ;;                                    (nyxt:render-url style-mapping)))
+             ;;  )
+             ;; (pathname
+             ;;  (:pre (:code (uiop:read-file-string style-mapping))))
+             ;; (function (:pre
+             ;;             (:code
+             ;;              (funcall style-mapping (nx-mapper/stylor-mode:active-internal-theme
+             ;;                                      nx-mapper:*user-settings*)))))
+             (t (:pre (:code script-mapping))))))))))
 
 (defun show-mapping-sources (sources)
   "Styles SOURCES to be displayed on the customization page."
@@ -330,6 +344,6 @@ Nyxt initialization file."
            (:hr)
            (:raw (nx-mapper::show-external-themes-configuration buffer))
            (:hr)
-           ;; (:raw (nx-mapper::show-scripts-configuration))
+           (:raw (nx-mapper::show-scripts-configuration))
            (:hr)
            (:raw (nx-mapper::show-url-assocs-configuration))))))
