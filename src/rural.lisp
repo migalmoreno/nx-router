@@ -111,8 +111,9 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
     (if block-p
         (progn
           ;; TODO: see if I can invoke buffer-load on the internal block page
-          (nyxt:delete-current-buffer)
-          (display-blocked-page :url (nyxt:render-url url))
+          (when (banner-p (nyxt:current-mode 'rural))
+            (nyxt:delete-current-buffer)
+            (display-blocked-page :url (nyxt:render-url url)))
           nil)
         request-data)))
 
@@ -211,6 +212,8 @@ TYPE can be one of :host, :path or :domain, while EQ-FN can be one of :starts, :
    (banner-p t :type boolean
              :documentation "Whether to show a popup when the current site is blocked.")))
 
+;; TODO: third party requests, such as embedded frames, are still being acted upon
+;; as per https://github.com/atlas-engineer/nyxt/issues/980
 (defun url-mapping-handler (request-data)
   "Handles buffer and the `rural-mode' URL mapping associations to dispatch the corresponding request-data."
   (alex:if-let ((mapping (find-if (lambda (mapping)
