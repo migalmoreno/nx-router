@@ -240,9 +240,9 @@ Finally, there's the internal themes rules, where as we can see from the above w
 
 This is an example stylist which I use in my configuration for a more compact and minimal interface to the browser, which looks like the following, but one is welcome to change each style slot as they see fit.
 
-[[file:~/pictures/20220305-153136.jpg]]
+[[file:assets/stylist-dark.jpg]]
 
-[[file:~/pictures/20220305-153237.jpg]]
+[[file:assets/stylist-light.jpg]]
 
 ** rural-mode
 =rural-mode= is an extension which enables fine-grained control over URL associations. Even though the Nyxt team is already working on a solution by =no-procrastinate-mode= which prevents the access to certain hosts as per [[https://github.com/atlas-engineer/nyxt/pull/1771][#1771]], as well as =blocker-mode=, which can also be leveraged to block the access to arbitrary hosts, I find that declaratively specifying these mappings in a consistent syntax and without having to rely on multiple external files is more cohesive. Therefore, one can set up a configuration for some URL mappings such as what follows in their Nyxt initialization file.
@@ -300,4 +300,4 @@ Thus, the user can tweak the configuration on the right pane, being able to add,
 
 Moreover, there are some interactive commands like =select-internal-theme= which also allow the user to change the current theme on the fly without having to tweak their configuration.
 
-[[file:~/pictures/20220305-153349.jpg]]
+[[file:assets/custom.jpg]]
