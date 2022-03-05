@@ -68,7 +68,7 @@ Therefore, using these three concepts, one could include the following configura
    (nx-mapper/stylor-mode:external-themes
     (list
      (make-mapping "GitHub" '(match-domain "github.com")
-                   :style (cl-css:css '((|.pagehead-actions,.mt-2|
+                   :style (cl-css:css '(("a[href*=watchers]"
                                          :display "none !important"))))
      (make-mapping "Lisp Documentation" '(match-domain "lisp.se" "lispworks.com")
                    :style (lambda (theme)
@@ -107,12 +107,145 @@ Therefore, using these three concepts, one could include the following configura
 
 The above configuration initially defines a script mapping called =FSF= which matches on the =fsf.org= domain, thereby triggering the script provided by the =:script= initarg, which in this case will simply change the page's internal contents to effectively just show the string "/This was invoked by some sample JavaScript/".
 
-The next set of rules involve external themes, which carry the same principle as scripts in that it maps a set of predicates to an external style specified by the =:style= initarg. As previously outlined, this style can be in the form of a CSS string, such as the one specified by the "GitHub" mapping (which uses the library =cl-css= that compiles Common Lisp into a CSS string). It can also take a function that has the current active theme as argument, such as the example provided in the =Lisp Documentation= mapping, which will essentially provide the same background and text color as the current internal theme for the whole site. If the style sheet becomes too big or one would like to use their favorite editor to tweak it, one can optionally also provide a pathname pointing to the CSS file. Finally, if one has their styles remotely backed up or they stumble upon one they like, they can point to their URL and it will be applied.
+The next set of rules involve external themes, which carry the same principle as scripts in that it maps a set of predicates to an external style specified by the =:style= initarg. As previously outlined, this style can be in the form of a CSS string, such as the one specified by the =GitHub= mapping (which uses the library =cl-css= that compiles Common Lisp into a CSS string). This first mapping, for instance, gets rid of the number specifying how many people are watching a repository. It can also take a function that has the current active theme as argument, such as the example provided in the =Lisp Documentation= mapping, which will essentially provide the same background and text color as the current internal theme for the whole site. If the style sheet becomes too big or one would like to use their favorite editor to tweak it, one can optionally also provide a pathname pointing to the CSS file. Finally, if one has their styles remotely backed up or they stumble upon one they like, they can point to their URL and it will be applied.
 
-Finally, there's the internal themes rules, where as we can see from the above we have to issue a name for the mapping, and then a set of theme attributes which are built into the =nyxt/theme= library that ships with the browser as of version =2.2.4=. In addition to these, each internal theme can take a "/stylist/", described as a custom style /crafter/ that allows one to style specific elements of the browser's interface  if they aren't satisfied with the layout of the mode line, for instance.
+Finally, there's the internal themes rules, where as we can see from the above we have to issue a name for the mapping, and then a set of theme attributes which are built into the =nyxt/theme= library that ships with the browser as of version =2.2.4=. In addition to these, each internal theme can take a "/stylist/", described as a custom style /crafter/ that allows one to style specific elements of the browser's interface if they aren't satisfied with a given one, such as the layout of the mode line. A stylist effectively aims at reducing the complexity associated with having to manually define the =style= slot of many user classes, and can be defined as follows.
+
+#+begin_src lisp
+(define-configuration nx-mapper/stylor-mode:stylist
+  ((nx-mapper/stylor-mode:name "Minimal UI")
+   (nx-mapper/stylor-mode:prompt-style
+    (lambda (theme)
+      (theme:themed-css theme
+        (* :font-family theme:font-family)
+        ("#prompt-modes"
+         :display "none")
+        ("#prompt-area"
+         :background-color theme:tertiary
+         :color theme:quaternary
+         :border "1px solid"
+         :border-color (if (theme:dark-p theme:theme) theme:quaternary theme:text))
+        ("#input"
+         :background-color theme:tertiary
+         :color theme:text)
+        (".source-content"
+         :border "none"
+         :border-collapse collapse)
+        (".source-name"
+         :background-color theme:background
+         :color theme:text
+         :font-style "italic")
+        (".source-content th"
+         :padding-left "0"
+         :background-color theme:background
+         :font-weight "bold")
+        (".source-content td"
+         :padding "0 2px")
+        ("#selection"
+         :font-weight "bold"
+         :background-color theme:secondary
+         :color theme:text))))
+   (nx-mapper/stylor-mode:buffer-style
+    (lambda (theme)
+      (theme:themed-css theme
+        (body
+         :font-family theme:font-family
+         :background-color theme:background
+         :color theme:text)
+        ("h1,h2,h3,h4,h5,h6"
+         :font-family "IBM Plex Sans"
+         :color theme:primary)
+        ("p,pre,td"
+         :font-family "IBM Plex Sans"
+         :color theme:text)
+        (pre
+         :background-color theme:tertiary)
+        ("button,a:link"
+         :color theme:text
+         :font-family "IBM Plex Sans")
+        (".button, .button:hover , .button:visited, .button:active"
+         :background-color theme:secondary
+         :border "1px solid"
+         :border-color (if (theme:dark-p theme:theme) theme:quaternary theme:text)
+         :color theme:text)
+        (code
+         :font-family "Iosevka"
+         :background-color theme:tertiary))))
+   (nx-mapper/stylor-mode:status-style
+    (lambda (theme)
+      (theme:themed-css theme
+        (body
+         :font-family theme:font-family
+         :height "100%"
+         :width "100%"
+         :border "1px solid"
+         :border-color (if (theme:dark-p theme:theme) theme:quaternary theme:text)
+         :box-sizing "border-box"
+         :line-height "20px"
+         :display "flex"
+         :flex-direction "column"
+         :background theme:tertiary
+         :flex-wrap "wrap")
+        ("#container"
+         :display "flex"
+         :height "100%"
+         :width "100%"
+         :line-height "20px"
+         :justify-content "space-between"
+         :align-items "center")
+        ("#buttons"
+         :display "flex"
+         :align-items "center"
+         :justify-content "center"
+         :line-height "20px"
+         :height "100%")
+        ("#url"
+         :font-weight "bold"
+         :max-width "60%"
+         :padding-right "0"
+         :padding-left "5px"
+         :background-color theme:tertiary
+         :color theme:text
+         :box-sizing "border-box"
+         :z-index "auto")
+        ("#tabs" :display "none")
+        ("#modes"
+         :padding-right "2px"
+         :background-color theme:tertiary
+         :box-sizing "border-box"
+         :color theme:text
+         :display "flex"
+         :justify-contents "flex-end"
+         :z-index "auto")
+        (.button
+         :color theme:text))))
+   (nx-mapper/stylor-mode:message-style
+    (lambda (theme)
+      (theme:themed-css theme
+        (body
+         :color theme:text
+         :background-color theme:background
+         :font-family theme:font-family))))
+   (nx-mapper/stylor-mode:hint-style
+    (lambda (theme)
+      (theme:themed-css theme
+        (".nyxt-hint"
+         :background-color theme:primary
+         :color theme:background
+         :font-weight "bold"
+         :padding "0px 3px"
+         :border-radius "2px"
+         :z-index #.(1- (expt 2 31))))))))
+#+end_src
+
+This is an example stylist which I use in my configuration for a more compact and minimal interface to the browser, which looks like the following, but one is welcome to change each style slot as they see fit.
+
+[[file:~/pictures/20220305-153136.jpg]]
+
+[[file:~/pictures/20220305-153237.jpg]]
 
 ** rural-mode
-=rural-mode= is an extension which enables fine-grained control over URL associations. Even though the Nyxt team is already working on a solution by =no-procrastinate-mode= which prevents the access to certain hosts as per [[https://github.com/atlas-engineer/nyxt/pull/1771][#1771]], as well as =blocker-mode=, which can also be leveraged to block the access to arbitrary hosts, I find that declaratively specifying these mappings in a consistent syntax and without having to rely on multiple external files is more cohesive. Therefore, one can set up a configuration for a host such as what follows in their Nyxt initialization file.
+=rural-mode= is an extension which enables fine-grained control over URL associations. Even though the Nyxt team is already working on a solution by =no-procrastinate-mode= which prevents the access to certain hosts as per [[https://github.com/atlas-engineer/nyxt/pull/1771][#1771]], as well as =blocker-mode=, which can also be leveraged to block the access to arbitrary hosts, I find that declaratively specifying these mappings in a consistent syntax and without having to rely on multiple external files is more cohesive. Therefore, one can set up a configuration for some URL mappings such as what follows in their Nyxt initialization file.
 
 #+begin_src lisp
 (import 'nx-mapper:make-mapping)
@@ -144,25 +277,27 @@ Finally, there's the internal themes rules, where as we can see from the above w
      (make-mapping "Amazon" '(match-domain "amazon.com")
                    :blocklist '((:host ((:starts (not "smile"))))))
      (make-mapping "Lemmy" '(match-domain "lemmy.ml")
-                   :blocklist '((:path ((:starts (not "/post"))
-                                        (:contains (not "image")))))))))
+                   :blocklist '((:path ((:contains ("post"))
+                                        (:starts ("/u"))))))))))
 #+end_src
 
-From the above, the first mapping will configure all Instagram requests to redirect to the host =insta.trom.tf= and additionally to redirect all of its paths which don't start with =/=, =/p/=, or =/tv= to =/u= paths, as this is what the [[https://bibliogram.art/][Bibliogram]] alternative Instagram front-end uses for its URL structure. Do note this mapping also takes an =instances= slot, which can be either a list or a function that will compute a list of instances. This is useful if the service used to redirect the predicates offers a list of predefined instances, and these will also be added to the mapping's predicates on mapping instantiation. Indeed, mapping sources can also consist of lists of predicates for which to match URLs, which means on the =Instagram= mapping above, it will match either domains that contain =instagram.com= or URLs that contain the regexp starting with =https://bibliogram.*=. This was added to allow for more granularity and so blocklists can also target hostnames.
+From the above, the first mapping will configure all Instagram requests to redirect to the host =insta.trom.tf= and additionally to redirect all of its paths which don't start with =/=, =/p/=, or =/tv= to =/u= paths, as this is what the [[https://bibliogram.art/][Bibliogram]] alternative Instagram front-end uses for its URL structure. Do note this mapping also takes an =instances= slot, which can be either a list or a function that will compute a list of instances. This is useful if the service used to redirect the predicates offers a list of predefined instances, and these will also be added to the mapping's predicates on mapping instantiation. Indeed, mapping sources can also consist of lists of predicates for which to match URLs, which means on the =Instagram= mapping above, it will match either domains that contain =instagram.com= or URLs that contain the regexp starting with =https://bibliogram.*=. This was added to allow for more granularity, so that mappings can get applied on more triggers.
 
 The second mapping from above will redirect all Reddit requests to the =teddit.namazso.eu= host and additionally block all of the paths pertaining to such host except the ones that contain the =/comments= section. This would essentially limit the user to only being able to access Reddit publications instead of sections like its main feed.
 
-The third mapping matches on YouTube video URLs, which could also be hosted on alternative services such as [[https://invidious.io/][Invidious]], as well as MP3 files, and redirect all of these requests to =youtube.com=, and dispatch a rule which invokes an exernal program with the current request data, in this case launching an [[https://mpv.io/][mpv]] player IPC client process to control the player from Emacs. Do note this is a custom function from my configuration, but one could also pass a one-placeholder format string such as =mpv --video=no ~s= to the =:external= slot if they prefer not to use a Lisp form.
+The third mapping matches on YouTube video URLs, which could also be hosted on alternative services such as [[https://invidious.io/][Invidious]], as well as MP3 files, and redirect all of these requests to =youtube.com=, and dispatch a rule which invokes an exernal program with the current request data, in this case launching an [[https://mpv.io/][mpv]] player IPC client process to control the player from Emacs. Do note this is a custom function from my configuration, but one could also pass a one-placeholder format string such as =mpv --video=no ~a= to the =:external= slot if they prefer not to use a Lisp form.
 
 The fourth mapping showcases the use of a hostname blocklist, which in this case would prevent the user from accessing Amazon URLs unless they contain the =smile.= hostname.
 
-The fifth mapping only consists of a blocklist for certain paths of the =lemmy.ml= domain; namely, those that don't start with either =/post= or that don't contain the =image= string in them.
+The fifth mapping only consists of a blocklist for certain paths of the =lemmy.ml= domain; namely, the paths that would be blocked would be those that contain the string =post= on them or the ones that start with =/u=, which would block all publications and user profiles on the site.
 
-As one might be able to notice, the extension's aim is to offer the user full flexibility when it comes to the kind of behavior they want to trigger on a certain predicate or predicates on the web, so they can mold their browsing experience according to their preferences.
+As one might be able to notice, the extension's aim is to offer maximum flexibility when it comes to the kind of behavior they want to trigger on a certain predicate or list of predicates on the web, so they can mold their browsing experience according to their preferences.
 
 ** Customization Interface
 For those who aren't well versed with Lisp yet or don't like to tweak around configuration files, a customization interface is provided through the =customize-mappings= command, which will show a two-paned settings page consisting of an automatically generated code snippet to be pasted in the user's Nyxt initialization file on the left pane and the actual extension settings on the right pane.
 
 Thus, the user can tweak the configuration on the right pane, being able to add, delete, and edit mappings as well as seeing their information in a more user-friendly interface, which is especially useful if they aren't used to a language with lots parentheses. Changes will see themselves reflected on the left pane as the user changes them, but it's important to note these will only persist for the current Nyxt session and it's thereby crucial one copies them over to their configuration so they get persisted.
 
-Moreover, there are some interactive commands like =select-internal-theme= which also allow the user to change the current theme on the fly without having to change their configuration.
+Moreover, there are some interactive commands like =select-internal-theme= which also allow the user to change the current theme on the fly without having to tweak their configuration.
+
+[[file:~/pictures/20220305-153349.jpg]]
