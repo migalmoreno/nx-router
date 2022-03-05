@@ -1,3 +1,4 @@
+;;; -*- mode: org; -*-
 #+title: nx-mapper
 =nx-mapper= is an extension for the [[https://nyxt.atlas.engineer/][Nyxt]] browser which aims to reduce the friction between the user mappings in day-to-day browsing behavior. Its purpose is to try to become a unified solution to problems which would have otherwise required numerous extensions in conventional browsers. Currently, it consists of two smaller sub-extensions for which one can define configuration "/mappings/" to extract a particular behavior: =stylor-mode= and =rural-mode=.
 
@@ -35,7 +36,7 @@ Where =/path/to/mapper.lisp= is a custom file that should be created to provide 
 As one might notice from the above, one can bundle everything into the global =nx-mapper:settings= class, but optionally one can configure everything per sub-extension too.
 
 #+begin_src elisp
-(define-cofniguration nx-mapper/stylor-mode:settings
+(define-configuration nx-mapper/stylor-mode:settings
   ;; stylor-mode slots
   )
 
@@ -75,7 +76,7 @@ Therefore, using these three concepts, one could include the following configura
                                (*
                                 :background-color theme:background
                                 :color theme:text))))
-     (make-mapping "Medium" '(match-domain "medium")
+     (make-mapping "Medium" '(match-domain "medium.com")
                     :style (asdf:system-relative-pathname :nx-mapper "styles/medium.css"))
      (make-mapping "Nord Startpage" '(match-domain "startpage.com")
                    :style (quri:uri "https://bpa.st/raw/4WYA"))))
@@ -151,7 +152,7 @@ From the above, the first mapping will configure all Instagram requests to redir
 
 The second mapping from above will redirect all Reddit requests to the =teddit.namazso.eu= host and additionally block all of the paths pertaining to such host except the ones that contain the =/comments= section. This would essentially limit the user to only being able to access Reddit publications instead of sections like its main feed.
 
-The third mapping matches on YouTube video URLs, which could also be hosted on alternative services such as [[https://invidious.io/][Invidious]], as well as MP3 files, and redirect all of these requests to =youtube.com=, and dispatch a rule which invokes an exernal program with the current request data, in this case launching an [[https://mpv.io/][mpv]] player IPC client process to control the player from Emacs. Do note this is a custom function from my configuration, but one could also pass a string such as =mpv --video=no %s= to the =:external= slot if they prefer not to use a Lisp form.
+The third mapping matches on YouTube video URLs, which could also be hosted on alternative services such as [[https://invidious.io/][Invidious]], as well as MP3 files, and redirect all of these requests to =youtube.com=, and dispatch a rule which invokes an exernal program with the current request data, in this case launching an [[https://mpv.io/][mpv]] player IPC client process to control the player from Emacs. Do note this is a custom function from my configuration, but one could also pass a one-placeholder format string such as =mpv --video=no ~s= to the =:external= slot if they prefer not to use a Lisp form.
 
 The fourth mapping showcases the use of a hostname blocklist, which in this case would prevent the user from accessing Amazon URLs unless they contain the =smile.= hostname.
 
