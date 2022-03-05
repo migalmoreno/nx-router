@@ -44,8 +44,8 @@ prefix this list with `not'.")
    (blocklist
     '()
     :type (or null list)
-    :documentation "Property list of black listed resources in the form of TYPE VALUE where TYPE
-is one of :path, :host, or :title and VALUE is another plist of the form TYPE and PATHNAMES where TYPE is either
+    :documentation "Property list of block listed resources in the form of TYPE VALUE where TYPE
+is one of :path or :host, and VALUE is another plist of the form TYPE and PATHNAMES where TYPE is either
  :start, :end, or :contain and PATHNAMES is a list of URL pathnames to draw the comparison against. If PATHNAMES
 is prefixed with `not', all sites will be blocked except for the specified list.")
    (external
@@ -225,6 +225,7 @@ TYPE can be one of :host, :path or :domain, while EQ-FN can be one of :starts, :
                                           (funcall (eval source) (nyxt:url request-data)))))
                                     (url-mappings nx-mapper:*user-settings*))))
     ;; TODO: external handler for certain URL parts?
+    ;; TODO: block or redirect per page title?
     (progn
       (setf (active-url-mapping nx-mapper:*user-settings*) mapping)
       (if (nyxt:request-resource-hook (current-buffer))
