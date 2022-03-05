@@ -209,7 +209,8 @@ the styles depending on the type of mapping provided."
 
 (defmethod cleanup ((mode stylor-mode))
   (hooks:remove-hook (nyxt:buffer-loaded-hook (buffer mode)) #'external-style-handler)
-  (hooks:remove-hook (nyxt:buffer-before-make-hook *browser*) #'internal-style-buffers))
+  (hooks:remove-hook (nyxt:buffer-before-make-hook *browser*) #'internal-style-handler)
+  (hooks:remove-hook (nyxt:prompt-buffer-make-hook *browser*) 'style-prompt-buffer))
 
 (defmethod find-internal-variant (&key dark)
   "Finds the first light theme variant from MODE. If DARK, it finds the first dark theme."
