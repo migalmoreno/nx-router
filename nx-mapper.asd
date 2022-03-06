@@ -1,7 +1,7 @@
 (asdf:defsystem #:nx-mapper
   :description "nx-mapper provides easy-to-define mappings for the Nyxt browser."
-  :author "franesio"
-  :license  "GPLv3"
+  :author "efimerspan"
+  :license  "BSD 3-Clause"
   :version "0.0.1"
   :serial t
   :depends-on (#:nyxt)
