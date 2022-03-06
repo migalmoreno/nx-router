@@ -1,6 +1,6 @@
 ;;; -*- mode: org; -*-
 #+title: nx-mapper
-=nx-mapper= is an extension for the [[https://nyxt.atlas.engineer/][Nyxt]] browser which aims to reduce the friction between the user mappings in day-to-day browsing behavior. Its purpose is to try to become a unified solution to problems which would have otherwise required numerous extensions in conventional browsers. Currently, it consists of two smaller sub-extensions for which one can define configuration "/mappings/" to extract a particular behavior: =stylor-mode= and =rural-mode=.
+=nx-mapper= is an extension for the [[https://nyxt.atlas.engineer/][Nyxt]] browser which aims to reduce the friction between user mappings in day-to-day browsing behavior. Its purpose is to try to become a unified solution to problems which would have otherwise required numerous extensions in conventional browsers. The problems that it currently solves, and for which configuration "/mappings/" are available are, acting as a user-style/user-script manager, dynamically changing browser internal themes, and providing the ability to compose URL associations, and this is provided via two modes: =stylor-mode= and =rural-mode=.
 
 * Installation
 To install the extension, one can simply download the source and place it in Nyxt's extensions path, by default given by the value of =(nyxt-source-registry)=, =~/.local/share/nyxt/extensions=.
@@ -269,7 +269,9 @@ This is an example stylist which I use in my configuration for a more compact an
 [[file:assets/stylist-light.jpg]]
 
 ** rural-mode
-=rural-mode= is an extension which enables fine-grained control over URL associations. Even though the Nyxt team is already working on a solution by =no-procrastinate-mode= which prevents the access to certain hosts as per [[https://github.com/atlas-engineer/nyxt/pull/1771][#1771]], as well as =blocker-mode=, which can also be leveraged to block the access to arbitrary hosts, I find that declaratively specifying these mappings in a consistent syntax and without having to rely on multiple external files is more cohesive. Therefore, one can set up a configuration for some URL mappings such as what follows in their Nyxt initialization file.
+=rural-mode= is an extension which enables fine-grained control over URL associations. Even though the Nyxt team is already working on a solution via =no-procrastinate-mode= which prevents the access to certain hosts as per [[https://github.com/atlas-engineer/nyxt/pull/1771][#1771]], as well as =blocker-mode=, which can also be leveraged to block the access to arbitrary hosts, I find that declaratively specifying these mappings in a consistent syntax and without having to rely on multiple external files is more cohesive. Also, even though there's already a Nyxt extension which provides redirections in the form of [[https://github.com/kssytsrk/nx-freestance-handler][nx-freestance-handler]], as I began adding more request resource handlers to my own configuration because I was not satisfied with the ones it provided, I decided to roll out a more general-purpose solution, so the user is not limited to a predefined number of URL associations and can build flexible mappings as they please.
+
+Therefore, one can set up a configuration for some URL mappings such as what follows in their Nyxt initialization file.
 
 #+begin_src lisp
 (import 'nx-mapper:make-mapping)
@@ -309,13 +311,13 @@ From the above, the first mapping will configure all Instagram requests to redir
 
 The second mapping from above will redirect all Reddit requests to the =teddit.namazso.eu= host and additionally block all of the paths pertaining to such host except the ones that contain the =/comments= section. This would essentially limit the user to only being able to access Reddit publications instead of sections like its main feed.
 
-The third mapping matches on YouTube video URLs, which could also be hosted on alternative services such as [[https://invidious.io/][Invidious]], as well as MP3 files, and redirect all of these requests to =youtube.com=, and dispatch a rule which invokes an exernal program with the current request data, in this case launching an [[https://mpv.io/][mpv]] player IPC client process to control the player from Emacs. Do note this is a custom function from my configuration, but one could also pass a one-placeholder format string such as =mpv --video=no ~a= to the =:external= slot if they prefer not to use a Lisp form.
+The third mapping matches on YouTube video URLs, which could also be hosted on alternative services such as [[https://invidious.io/][Invidious]], as well as MP3 files, redirect all of these requests to =youtube.com=, and dispatch a rule which invokes an exernal program with the current request data, in this case launching an [[https://mpv.io/][mpv]] player IPC client process to control the player from Emacs. Do note this is a custom function from my configuration, but one could also pass a one-placeholder format string such as =mpv --video=no ~a= to the =:external= slot if they prefer not to use a Lisp form.
 
 The fourth mapping showcases the use of a hostname blocklist, which in this case would prevent the user from accessing Amazon URLs unless they contain the =smile.= hostname.
 
 The fifth mapping only consists of a blocklist for certain paths of the =lemmy.ml= domain; namely, the paths that would be blocked would be those that contain the string =post= on them or the ones that start with =/u=, which would block all publications and user profiles on the site.
 
-As one might be able to notice, the extension's aim is to offer maximum flexibility when it comes to the kind of behavior they want to trigger on a certain predicate or list of predicates on the web, so they can mold their browsing experience according to their preferences.
+Additionally, to block an entire URL predicate or list of predicates, you can simply pass =t= to the =blocklist= slot.
 
 ** Customization Interface
 For those who aren't well versed with Lisp yet or don't like to tweak around configuration files, a customization interface is provided through the =customize-mappings= command, which will show a two-paned settings page consisting of an automatically generated code snippet to be pasted in the user's Nyxt initialization file on the left pane and the actual extension settings on the right pane.
