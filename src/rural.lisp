@@ -47,7 +47,8 @@ prefix this list with `not'.")
     :documentation "Property list of block listed resources in the form of TYPE VALUE where TYPE
 is one of :path or :host, and VALUE is another plist of the form TYPE and PATHNAMES where TYPE is either
  :start, :end, or :contain and PATHNAMES is a list of URL pathnames to draw the comparison against. If PATHNAMES
-is prefixed with `not', all sites will be blocked except for the specified list.")
+is prefixed with `not', all sites will be blocked except for the specified list. Also, if this is `t', it
+will block the whole URL for the defined sources.")
    (external
     nil
     :type (or null function string)
@@ -104,10 +105,13 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
 (defmethod block-handler (request-data mapping)
   "Specifies rules for which to block REQUEST-DATA from loading in MAPPING."
   (let ((url (url request-data))
+        (blocklist (blocklist mapping))
         block-p)
-    (loop for rule in (blocklist mapping)
-          do (when (handle-block-rule rule url mapping)
-               (setf block-p t)))
+    (typecase blocklist
+      (list (loop for rule in blocklist
+                  do (when (handle-block-rule rule url mapping)
+                       (setf block-p t))))
+      (t (setf block-p t)))
     (if block-p
         (progn
           ;; TODO: see if I can invoke buffer-load on the internal block page
