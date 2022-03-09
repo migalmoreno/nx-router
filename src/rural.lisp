@@ -72,7 +72,6 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
   (with-slots (instances source) mapping
     (flet ((construct-predicates ()
              (mapcar (lambda (instance)
-                       (str:emptyp instance)
                        (if (quri:uri-http-p (quri:uri instance))
                            `(nyxt:match-url ,instance)
                            `(nyxt:match-host ,instance)))
@@ -93,8 +92,8 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
         (setf (quri:uri-host url) (first (redirect mapping))))
       (setf (quri:uri-host url) (redirect mapping))))
 
-;; For same page requests, it doesn't do the redirect so I believe
-;; I should use the `buffer-loaded-hook' with this handler
+;; For same page requests, it sometimes won't perform the redirect so look
+;; into using `buffer-loaded-hook' or `buffer-load-hook'
 (defun redirect-handler (request-data mapping)
   "Redirects REQUEST-DATA to the redirect of MAPPING."
   (let ((url (url request-data)))
@@ -109,12 +108,11 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
         block-p)
     (typecase blocklist
       (list (loop for rule in blocklist
-                  do (when (handle-block-rule rule url mapping)
-                       (setf block-p t))))
+                  do (setf block-p (handle-block-rule rule url mapping))))
       (t (setf block-p t)))
     (if block-p
         (progn
-          ;; TODO: see if I can invoke buffer-load on the internal block page
+          ;; TODO: see if I can invoke `buffer-load' on the internal block page
           (when (banner-p (nyxt:current-mode 'rural))
             (nyxt:delete-current-buffer)
             (display-blocked-page :url (nyxt:render-url url)))
@@ -127,11 +125,16 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
   (spinneret:with-html-string
     (let ((mapping (nx-mapper/rural-mode:active-url-mapping nx-mapper:*user-settings*)))
       (:style (nyxt:style buffer))
-      (:div :style "display: flex; width: 100%; justify-content:center; align-items: center; flex-direction: column; height: 100%;"
+      (:div :style (cl-css:inline-css
+                    '(:display "flex" :width "100%"
+                      :justify-content "center"
+                      :align-items "center"
+                      :flex-direction "column"
+                      :height "100%"))
             (:img :src "https://nyxt.atlas.engineer/image/nyxt_128x128.png")
             (:h1 "The page you're trying to access has been blocked by nx-mapper.")
             (when url
-              (:a :style "text-decoration: underline;" url))))))
+              (:a :style (cl-css:inline-css '(:text-decoration "underline")) url))))))
 
 (defun external-handler (request-data mapping)
   "Runs the MAPPING's specified external command with REQUEST-DATA."
@@ -164,16 +167,38 @@ uses MAPPING to block redirects accordingly."
         (host-rules (getf url-rules :host))
         block-p)
     (flet ((assess-rules (type test rules)
-             (if (equal (first rules) 'not)
-                 (unless (url-compare url (rest rules) :eq-fn test :type type)
-                   (setf block-p t))
-                 (when (url-compare url rules :eq-fn test :type type)
-                   (setf block-p t)))))
-      (loop for (predicate paths) in path-rules
-            do (case predicate
-                 (:contains (assess-rules :path :contains paths))
-                 (:starts (assess-rules :path :starts paths))
-                 (:ends (assess-rules :path :ends paths))))
+             (setf block-p
+                   (if (equal (first rules) 'not)
+                       (unless (url-compare url (rest rules) :eq-fn test :type type)
+                           t)
+                       (when (url-compare url rules :eq-fn test :type type)
+                           t)))))
+      (etypecase path-rules
+        (list (if (equal (first path-rules) 'or)
+                  (loop for clause in (rest path-rules)
+                        collect (progn
+                                  (etypecase clause
+                                    (list
+                                     (loop for (predicate paths) in clause
+                                           collect (case predicate
+                                                     (:contains (assess-rules :path :contains paths))
+                                                     (:starts (assess-rules :path :starts paths))
+                                                     (:ends (assess-rules :path :ends paths)))))
+                                    (integer (when (= (length (str:split-omit-nulls "/" (quri:uri-path url)))
+                                                      clause)
+                                               (setf block-p t))))
+                                  block-p)
+                          into clauses
+                        finally (setf block-p (not (some #'null clauses))))
+                  (loop for (predicate paths) in path-rules
+                        do (case predicate
+                             (:contains (assess-rules :path :contains paths))
+                             (:starts (assess-rules :path :starts paths))
+                             (:ends (assess-rules :path :ends paths))))))
+        ;; TODO: allow to block given a user predicate that takes the current path
+        (integer (when (= (length (str:split-omit-nulls "/" (quri:uri-path url)))
+                          path-rules)
+                   (setf block-p t))))
       (loop for (predicate hostnames) in host-rules
             do (case predicate
                  (:contains (assess-rules :host :contains hostnames))
