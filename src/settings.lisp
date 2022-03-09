@@ -117,7 +117,9 @@ Nyxt initialization file."
                                  (print-configuration url-assocs))))
     (spinneret:with-html-string
       (:aside
-       :style "width: 50%; padding: 0 2rem; overflow-y: scroll"
+       :style (cl-css:inline-css
+               '(:width "50%" :padding "0 2 rem"
+                 :overflow-y "scroll"))
        (:h1 (:code "nx-mapper") " initialization snippet")
        (:p
         "After customizing, one is to put this code snippet into their Nyxt init file at "
@@ -169,12 +171,13 @@ Nyxt initialization file."
                              (theme:text-color global-theme)))
                  (loop for slot in color-slots
                        collect (:tr
-                                (:td :style "padding 10px"
+                                (:td :style (cl-css:inline-css '(:padding "10px"))
                                      (car (str:split "-" (str:capitalize (string slot)))))
                                 ;; Once the color picker is chosen, add a button which lets us
                                 ;; edit the color from this table data
-                                (:td :style (format nil "background: ~a; padding: 25px; width: 50%"
-                                                    (funcall slot theme))))))
+                                (:td :style (cl-css:inline-css
+                                             `(:background ,(funcall slot theme)
+                                               :padding "25px" :width "50%"))))))
          (:button :class "button"
                   :onclick (ps:ps (nyxt/ps:lisp-eval
                                    `(nx-mapper/stylor-mode:select-internal-theme ,theme-name)))
@@ -332,11 +335,23 @@ Nyxt initialization file."
   (buffer "*nx-mapper settings*" 'nyxt:base-mode)
   "Displays an extension customization page."
   (spinneret:with-html-string
-    (:style (nyxt:style buffer))
-    (:div
-     :style "display:flex;width:100%;height:100%;overflow:hidden;flex-direction:row;justify-content:center;"
+    (:style (str:concat
+             (nyxt:style buffer)
+             (cl-css:css
+              '(("#settings-container"
+                 :display "flex"
+                 :width "100%"
+                 :height "100%"
+                 :overflow "hidden"
+                 :flex-direction "row"
+                 :justify-content "center")
+                ("#settings-pane"
+                 :width "50%"
+                 :overflow-y "scroll"
+                 :padding "0 2rem")))))
+    (:div :id "settings-container"
      (:raw (nx-mapper::print-init-snippet))
-     (:div :style "width: 50%; overflow-y: scroll; padding: 0 2rem"
+     (:div :id "settings-pane"
            (:h1 "Settings")
            (:p (format nil "Welcome back, ~:(~a~), these are your nx-mapper settings."
                        (uiop:getenv "USER")))
