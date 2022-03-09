@@ -1,9 +1,9 @@
 ;;; -*- mode: org; -*-
 #+title: nx-mapper
-=nx-mapper= is an extension for the [[https://nyxt.atlas.engineer/][Nyxt]] browser which aims at reducing the complexity associated with defining common browsing behaviors desired by power users, such as specifying the look and behavior of sites, as well as establishing healthy habits through blocklists, or managing your browser themes on the fly. Its purpose is to try to become a unified solution to such problems, which would have otherwise required numerous extensions in conventional browsers and having to switch mental paradigms between each. All these features are provided via two modes: =stylor-mode= and =rural-mode=.
+=nx-mapper= is an extension for the [[https://nyxt.atlas.engineer/][Nyxt]] browser which aims at reducing the complexity associated with defining common browsing behaviors desired by power users, such as specifying the look and behavior of sites, as well as establishing healthy habits through blocklists, or managing your browser themes on the fly. Its purpose is to try to become a unified solution to such problems, which would have otherwise required numerous extensions in conventional browsers and having to switch mental paradigms between each. All these features are provided via two modes: [[#stylor-mode][stylor-mode]] and [[#rural-mode][rural-mode]].
 
 * Installation
-To install the extension, you should download the source and place it in Nyxt's extensions path, by default given by the value of =nyxt-source-registry=, =~/.local/share/nyxt/extensions=.
+To install the extension, you should download the source and place it in Nyxt's extensions path, by default given by the value of =nyxt-source-registry= (=~/.local/share/nyxt/extensions=).
 
 #+begin_src sh
 git clone https://github.com/efimerspan/nx-mapper ~/.local/share/nyxt/nx-mapper
@@ -76,10 +76,13 @@ As you might notice from the above, you can bundle everything into the global =n
 * Configuration
 
 ** stylor-mode
+:PROPERTIES:
+:CUSTOM_ID: stylor-mode
+:END:
 /stylor-mode/ acts like a userscript and userstyle manager, as well as an easy way to manage Nyxt's themes. Its functionality is split into three core parts:
 
 - Internal themes :: these tweak the overall browser's interface elements and allow you to change the browser's appearance on the fly.
-- External themes :: these map sources that act like triggers for which to apply CSS styles. These triggers are in the form of URL predicates and styles can be supplied as CSS strings, local path names, URLs where remote style sheets are hosted, or a function which takes the current internal theme and uses it style the CSS. The latter is a nifty feature which allows you to share internal and external themes, achieving a more consistent look if that's something the user is interested in for a given site.
+- External themes :: these map sources that act like triggers for which to apply CSS styles. These triggers are in the form of URL predicates and styles can be supplied as CSS strings, local path names, URLs where remote style sheets are hosted, or a function which takes the current internal theme and uses it to style the CSS. The latter is a nifty feature which allows you to share internal and external themes, achieving a more consistent look if that's something the user is interested in for a given site.
 - Scripts :: these also map sources which act like triggers for which an arbitrary JavaScript snippet will be executed. This is slightly more powerful than just altering the look via themes, as it also enables you to tweak the behavior of sites.
 
 Therefore, using these three concepts, you can include something along the following lines in your Nyxt init file.
@@ -273,7 +276,10 @@ This is an example stylist which I use in my configuration for a more compact an
 [[file:assets/stylist-light.jpg]]
 
 ** rural-mode
-=rural-mode= is an extension which enables fine-grained control over URL associations. Even though the Nyxt team is already working on a solution via =no-procrastinate-mode= which prevents the access to certain hosts as per [[https://github.com/atlas-engineer/nyxt/pull/1771][#1771]], as well as =blocker-mode=, which can also be leveraged to block the access to arbitrary hosts, I find that declaratively specifying these mappings in a consistent syntax and without having to rely on multiple external files is more cohesive. Also, even though there's already a Nyxt extension which provides redirections in the form of [[https://github.com/kssytsrk/nx-freestance-handler][nx-freestance-handler]], as I began adding more request resource handlers to my own configuration because I was not satisfied with the ones it provided, I decided to roll out a more general-purpose solution, so the user is not limited to a predefined number of URL associations and can build flexible mappings as they please.
+:PROPERTIES:
+:CUSTOM_ID: rural-mode
+:END:
+=rural-mode= is an extension which enables fine-grained control over URL associations. Even though the Nyxt team is already working on a solution via =no-procrastinate-mode= which prevents the access to certain hosts as per [[https://github.com/atlas-engineer/nyxt/pull/1771][#1771]], as well as =blocker-mode=, which can also be leveraged to block the access to arbitrary hosts, I find that declaratively specifying these mappings in a consistent syntax and without having to rely on multiple external files is more cohesive. Also, even though there's already a Nyxt extension which provides redirections in the form of [[https://github.com/kssytsrk/nx-freestance-handler][nx-freestance-handler]], I quickly felt its limitation in the number of sites it provides support for, as I found myself adding more request resource handlers to my own configuration. As such, I decided to roll out a more general-purpose solution, so the user is not limited to a predefined number of URL associations and can mold flexible mappings as they please.
 
 Therefore, you can set up a configuration for some URL mappings such as what follows in your Nyxt initialization file.
 
@@ -283,45 +289,66 @@ Therefore, you can set up a configuration for some URL mappings such as what fol
 (define-configuration nx-mapper/rural-mode:settings
   ((nx-mapper/rural-mode:url-mappings
     (list
+     ;; 1
      (make-mapping "Instagram" '((match-domain "instagram.com")
                                  (match-regex "https://bibliogram.*")
                    :redirect '("insta.trom.tf" (:path (("/u" (not "/" "/p/" "/tv")))))
                    :instances (lambda ()
                                 (delete
                                  nil
-                                 (mapcar (lambda (instance)
-                                           (unless (str:emptyp
-                                                    (alex:assoc-value instance :url))
-                                             (alex:assoc-value instance :url)))
-                                         (json:with-decoder-simple-list-semantics
-                                           (json:decode-json-from-string (dex:get "https://teddit.net/instances.json"))))))))
+                                 (mapcar
+                                  (lambda (instance)
+                                    (unless (str:emptyp
+                                             (alex:assoc-value instance :url))
+                                      (alex:assoc-value instance :url)))
+                                  (json:with-decoder-simple-list-semantics
+                                    (json:decode-json-from-string
+                                     (dex:get
+                                      "https://bibliogram.art/api/instances"))))))))
+     ;; 2
      (make-mapping "Reddit" '(match-domain "reddit.com")
                    :redirect "teddit.namazso.eu"
                    :blocklist '((:path ((:contains (not "/comments"))))))
+     ;; 3
      (make-mapping "Audio" '((match-regex ".*/watch\\?v=.*")
                              (match-file-extension "mp3")
                    :redirect "youtube.com"
                    :external (lambda (data)
                                (eval-in-emacs
-                                `(init-multimedia-mpv-start ,(quri:render-uri (url data)) :audio-only t :repeat t)))))
+                                `(init-multimedia-mpv-start
+                                  ,(quri:render-uri (url data))
+                                  :audio-only t :repeat t)))))
+     ;; 4
      (make-mapping "Amazon" '(match-domain "amazon.com")
                    :blocklist '((:host ((:starts (not "smile"))))))
+     ;; 5
      (make-mapping "Lemmy" '(match-domain "lemmy.ml")
                    :blocklist '((:path ((:contains ("post"))
-                                        (:starts ("/u"))))))))))
+                                        (:starts ("/u"))))))
+     ;; 6
+     (make-mapping "GitHub" '(match-domain "github.com")
+                   :blocklist '((:path (or 1 ((:contains (not "pulls" "search")))))))
+     ;; 7
+     (make-mapping "Blocked" '((match-domain "timewastingsite1.com")
+                               (match-domain "timewastingsite2.com"))
+                   :blocklist t)))))
 #+end_src
 
-From the above, the first mapping will configure all Instagram requests to redirect to the host =insta.trom.tf= and additionally to redirect all of its paths which don't start with =/=, =/p/=, or =/tv= to =/u= paths, as this is what the [[https://bibliogram.art/][Bibliogram]] alternative Instagram front-end uses for its URL structure. Do note this mapping also takes an =instances= slot, which can be either a list or a function that will compute a list of instances. This is useful if the service used to redirect the predicates offers a list of predefined instances, and these will also be added to the mapping's predicates on mapping instantiation. Indeed, mapping sources can also consist of lists of predicates for which to match URLs, which means on the =Instagram= mapping above, it will match either domains that contain =instagram.com= or URLs that contain the regexp starting with =https://bibliogram.*=. This was added to allow for more granularity, so that mappings can get applied on more triggers.
+The following describes each of these mappings and the various functionalities that one can accomplish with them:
 
-The second mapping from above will redirect all Reddit requests to the =teddit.namazso.eu= host and additionally block all of the paths pertaining to such host except the ones that contain the =/comments= section. This would essentially limit the user to only being able to access Reddit publications instead of sections like its main feed.
+1. Set up all Instagram requests to redirect to the host =insta.trom.tf= and additionally redirect all its paths which don't start with =/=, =/p/=, or =/tv= to =/u= paths, as this is what the [[https://bibliogram.art/][Bibliogram]] alternative Instagram front-end uses for its URL structure. Do note this mapping also takes an =instances= slot, which can be either a list or a function that will compute a list of instances. This is useful if the service used to redirect the predicates offers a list of predefined instances, and these will also be added to the mapping's predicates on mapping instantiation. Indeed, mapping sources can also consist of lists of predicates for which to match URLs, which means on the =Instagram= mapping above, it will match either domains that contain =instagram.com= or URLs that contain the regexp starting with =https://bibliogram.*=. This was added to allow for more granularity, so that mappings can get applied on more triggers.
 
-The third mapping matches on YouTube video URLs, which could also be hosted on alternative services such as [[https://invidious.io/][Invidious]], as well as MP3 files, redirect all of these requests to =youtube.com=, and dispatch a rule which invokes an exernal program with the current request data, in this case launching an [[https://mpv.io/][mpv]] player IPC client process to control the player from Emacs. Do note this is a custom function from my configuration, but we could also pass a one-placeholder format string such as =mpv --video=no ~a= to the =:external= slot if we'd rather not use a Lisp form.
+2. Redirect all Reddit requests to the =teddit.namazso.eu= host and additionally block all of the paths pertaining to such trigger except the ones that contain the =/comments= path. This would essentially limit the user to only being able to access Reddit publications instead of sections like its main feed.
 
-The fourth mapping showcases the use of a hostname blocklist, which in this case would prevent the user from accessing Amazon URLs unless they contain the =smile.= hostname.
+3. Matches on YouTube video URLs, videos hosted on its alternative front-ends such as [[https://invidious.io/][Invidious]],  as well as MP3 files, redirecting all of these requests to =youtube.com=, and dispatching a rule which invokes an external program with the current request data, in this case launching an [[https://mpv.io/][mpv]] player IPC client process to control the player from Emacs. Do note this is a custom function from my configuration, but we could also pass a one-placeholder format string such as =mpv --video=no ~a= to the =:external= slot if we'd rather not use a Lisp form, where =~a= represents the current mapping URL.
 
-The fifth mapping only consists of a blocklist for certain paths of the =lemmy.ml= domain; namely, the paths that would be blocked would be those that contain the string =post= on them or the ones that start with =/u=, which would block all publications and user profiles on the site.
+4. Showcases the use of a hostname blocklist, in this case preventing the user from accessing Amazon URLs unless they contain the =smile= hostname.
 
-Additionally, to block an entire URL predicate or list of predicates, you can simply pass =t= to the =blocklist= slot.
+5. Consists of a blocklist for certain paths of the =lemmy.ml= domain; namely, the blocked paths would be those that contain =post= on them or the ones that start with =/u=, which would block all publications and user profiles on the site.
+
+6. Provides a combined path rule for =github.com= requests. Combined rules (specified via =or=) in paths allow you to specify two or more predicates that you wish to draw the path comparison against. In this combination, the integer will first indicate that we want to block those paths that consist of a single sub-section (e.g. =https://github.com/profile_name=), /or/ block all paths except the ones which contain =pulls= or =search=. This essentially allows you to specify a more general block rule and bypass it for certain scenarios. In this case, it would block all single-sub-section paths on =github.com= (such as profiles, the marketplace and so on) but at the same time allow you to use GitHub's search engine and see your listed pull requests.
+
+7. Serves as a general blocklist trigger. To block an entire URL predicate or list of predicates, you can simply pass =t= to the =blocklist= slot.
 
 ** Customization Interface
 For those who aren't well versed with Lisp yet or don't like to tweak around configuration files, a customization interface is provided through the =customize-mappings= command, which will show a two-paned settings page consisting of an automatically generated code snippet to be pasted in the user's Nyxt initialization file on the left pane and the actual extension settings on the right pane.
