@@ -27,7 +27,8 @@
       (nyxt:reload-current-buffer))))
 
 (define-command-global reset-configuration ()
-  "Resets user settings to the default values."
+  "Resets user settings to the default values. This is useful to re-evaluate
+your user settings in your init file and then reload them in the current Nyxt session."
   (let ((active-theme (nx-mapper/stylor-mode:active-internal-theme
                        nx-mapper:*user-settings*)))
     (setf nx-mapper:*user-settings*
@@ -36,4 +37,4 @@
            nx-mapper:*user-settings*)
           active-theme)
     (nyxt:reload-current-buffer)
-    (nyxt:echo "Reset settings!")))
+    (nyxt:echo "Settings reset.")))
