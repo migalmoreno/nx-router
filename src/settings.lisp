@@ -11,9 +11,9 @@
   "Constructs a `nx-mapper' mapping. NAME and SOURCE are required and EXTRA-SLOTS
 can vary depending on how modular one wants their mapping to be."
   (cond
-    ((or (member :redirect extra-slots)
-         (member :blocklist extra-slots)
-         (member :external extra-slots))
+    ((some (lambda (slot)
+             (member slot (list :redirect :blocklist :external :media-p)))
+           extra-slots)
      (apply #'make-instance 'nx-mapper/rural-mode:url-mapping :name name :source source extra-slots))
     ((member :style extra-slots)
      (apply #'make-instance 'nx-mapper/stylor-mode:external-theme :name name :source source extra-slots))
@@ -112,7 +112,7 @@ Nyxt initialization file."
          (external-themes (nx-mapper/stylor-mode:external-themes nx-mapper:*user-settings*))
          (url-assocs (nx-mapper/rural-mode:url-mappings nx-mapper:*user-settings*))
          (generated-code (format nil "(define-configuration nx-mapper:settings ~&~@{~a~^~&~})"
-                                 (print-configuration internal-themes)
+                                 ;; (print-configuration internal-themes)
                                  (print-configuration external-themes)
                                  (print-configuration url-assocs))))
     (spinneret:with-html-string
@@ -123,11 +123,12 @@ Nyxt initialization file."
        (:h1 (:code "nx-mapper") " initialization snippet")
        (:p
         "After customizing, one is to put this code snippet into their Nyxt init file at "
-        (:code (format nil "~ainit.lisp" (namestring (nfiles:base-path nyxt:*init-file*)))) ".")
+        (:code (format nil "~a" (nfiles:expand nyxt:*init-file*))) ".")
        (:div (:button :class "button"
-                      :onclick (ps:ps (nyxt/ps:lisp-eval `(progn
-                                                            (nyxt:copy-to-clipboard ,generated-code)
-                                                            (nyxt:echo "Copied to clipboard!"))))
+                      :onclick (ps:ps (nyxt/ps:lisp-eval
+                                       `(progn
+                                          (nyxt:copy-to-clipboard ,generated-code)
+                                          (nyxt:echo "Copied to clipboard!"))))
                       "+ Copy ")
              (:button :class "button"
                          :onclick (ps:ps (nyxt/ps:lisp-eval
@@ -137,8 +138,7 @@ Nyxt initialization file."
 
 (defun show-internal-themes-configuration ()
   "Shows the section about Internal Themes."
-  (let ((internal-themes (nx-mapper/stylor-mode:internal-themes nx-mapper:*user-settings*)))
-    (spinneret:with-html-string
+  (spinneret:with-html-string
     (:h2 "Internal themes")
     (:p "The following themes tweak the appearance of the browser interface.")
     ;; TODO: Add sun or moon icon depending if the theme is dark or not
@@ -148,60 +148,64 @@ Nyxt initialization file."
                                                    'nx-mapper/stylor-mode:internal-theme
                                                    'nx-mapper/stylor-mode:internal-themes)))
               "+ Add theme"))
-    (dolist (theme internal-themes)
-      (let ((theme-name (nx-mapper:name theme))
-            (global-theme (nyxt:theme nyxt:*browser*))
-            (color-slots (remove-if-not
-                          (lambda (slot)
-                            (str:containsp "color" (str:downcase slot)))
-                          (mapcar (lambda (slot)
-                                    (sb-mop:slot-definition-name slot))
-                                  (sb-mop:class-direct-slots (find-class 'theme:theme))))))
-        (:div
-         (:h2 (str:concat theme-name
-                          (when (eq global-theme theme)
-                            " *")
-                          (if (theme:dark-p theme)
-                              " 🌚" " 🌞")))
-         (:table :style (format
-                         nil
-                         "table-layout: fixed; width: 100%; margin: 10px 0; border: 1px solid ~a"
-                         (if (theme:dark-p global-theme)
-                             (theme:tertiary-color global-theme)
-                             (theme:text-color global-theme)))
-                 (loop for slot in color-slots
-                       collect (:tr
-                                (:td :style (cl-css:inline-css '(:padding "10px"))
-                                     (car (str:split "-" (str:capitalize (string slot)))))
-                                ;; Once the color picker is chosen, add a button which lets us
-                                ;; edit the color from this table data
-                                (:td :style (cl-css:inline-css
-                                             `(:background ,(funcall slot theme)
-                                               :padding "25px" :width "50%"))))))
-         (:button :class "button"
-                  :onclick (ps:ps (nyxt/ps:lisp-eval
-                                   `(nx-mapper/stylor-mode:select-internal-theme ,theme-name)))
-                  "💾 Load theme")
-         (:button :class "button"
-                  :onclick (ps:ps (nyxt/ps:lisp-eval
-                                   `(delete-mapping
-                                     'nx-mapper/stylor-mode:internal-theme
-                                     'nx-mapper/stylor-mode:internal-themes
-                                     ,theme-name)))
-                  "- Delete theme")))))))
+    (alex:if-let ((internal-themes (nx-mapper/stylor-mode:internal-themes
+                                    nx-mapper:*user-settings*)))
+      (dolist (theme internal-themes)
+        (let ((theme-name (nx-mapper:name theme))
+              (global-theme (nyxt:theme nyxt:*browser*))
+              (color-slots (remove-if-not
+                            (lambda (slot)
+                              (str:containsp "color" (str:downcase slot)))
+                            (mapcar (lambda (slot)
+                                      (sb-mop:slot-definition-name slot))
+                                    (sb-mop:class-direct-slots (find-class 'theme:theme))))))
+          (:div
+           (:h2 (str:concat theme-name
+                            (when (eq global-theme theme)
+                              " *")
+                            (if (theme:dark-p theme)
+                                " 🌚" " 🌞")))
+           (:table :style (format
+                           nil
+                           "table-layout: fixed; width: 100%; margin: 10px 0; border: 1px solid ~a"
+                           (if (theme:dark-p global-theme)
+                               (theme:tertiary-color global-theme)
+                               (theme:text-color global-theme)))
+                   (loop for slot in color-slots
+                         collect (:tr
+                                  (:td :style (cl-css:inline-css '(:padding "10px"))
+                                       (car (str:split "-" (str:capitalize (string slot)))))
+                                  ;; Once the color picker is chosen, add a button which lets us
+                                  ;; edit the color from this table data
+                                  (:td :style (cl-css:inline-css
+                                               `(:background ,(funcall slot theme)
+                                                 :padding "25px" :width "50%"))))))
+           (:button :class "button"
+                    :onclick (ps:ps (nyxt/ps:lisp-eval
+                                     `(nx-mapper/stylor-mode:select-internal-theme ,theme-name)))
+                    "💾 Load theme")
+           (:button :class "button"
+                    :onclick (ps:ps (nyxt/ps:lisp-eval
+                                     `(delete-mapping
+                                       'nx-mapper/stylor-mode:internal-theme
+                                       'nx-mapper/stylor-mode:internal-themes
+                                       ,theme-name)))
+                    "- Delete theme")))))
+    (:p "No browser themes specified.")))
 
 (defun show-external-themes-configuration (buffer)
   "Displays the section to do with external themes in BUFFER."
-  (let ((external-themes (nx-mapper/stylor-mode:external-themes nx-mapper:*user-settings*)))
-    (spinneret:with-html-string
-      (:h2 "External Themes")
-      (:p "These allow you to set rules for which to apply CSS styles to arbitrary sources.")
-      (:div
-       (:button :class "button"
-                :onclick (ps:ps (nyxt/ps:lisp-eval '(nx-mapper:add-mapping
-                                                     'nx-mapper/stylor-mode:external-theme
-                                                     'nx-mapper/stylor-mode:external-themes)))
-                "+ Add theme"))
+  (spinneret:with-html-string
+    (:h2 "External Themes")
+    (:p "These allow you to set rules for which to apply CSS styles to arbitrary sources.")
+    (:div
+     (:button :class "button"
+              :onclick (ps:ps (nyxt/ps:lisp-eval '(nx-mapper:add-mapping
+                                                   'nx-mapper/stylor-mode:external-theme
+                                                   'nx-mapper/stylor-mode:external-themes)))
+              "+ Add theme"))
+    (alex:if-let ((external-themes (nx-mapper/stylor-mode:external-themes
+                                    nx-mapper:*user-settings*)))
       (dolist (theme external-themes)
         (let ((name (nx-mapper:name theme))
               (style-mapping (nx-mapper/stylor-mode:style theme))
@@ -211,15 +215,18 @@ Nyxt initialization file."
            (:raw (nx-mapper::show-mapping-sources sources))
            (typecase style-mapping
              (quri:uri
-               (:pre (:code (nyxt/style-mode::open-or-cache-url (nyxt:find-mode buffer 'stylor-mode)
+              (:pre (:code (nyxt/style-mode::open-or-cache-url (nyxt:find-mode buffer 'stylor-mode)
                                                                (nyxt:render-url style-mapping)))))
              (pathname
               (:pre (:code (uiop:read-file-string style-mapping))))
              (function (:pre
-                         (:code
-                          (funcall style-mapping (nx-mapper/stylor-mode:active-internal-theme
-                                                  nx-mapper:*user-settings*)))))
-              (t (:pre (:code style-mapping))))
+                        (:code
+                         (if (nx-mapper/stylor-mode:active-internal-theme
+                               nx-mapper:*user-settings*)
+                             (funcall style-mapping (nx-mapper/stylor-mode:active-internal-theme
+                                                     nx-mapper:*user-settings*))
+                             (funcall style-mapping (nyxt:theme nyxt:*browser*))))))
+             (t (:pre (:code style-mapping))))
            (:div
             (:button
              :class "button"
@@ -254,41 +261,21 @@ Nyxt initialization file."
               (t (:button :class "button"
                           :onclick (ps:ps (nyxt/ps:lisp-eval
                                            `(nyxt::%edit-with-external-editor ,style-mapping)))
-                          "Edit CSS"))))))))))
-
-;; TODO: add buttons to edit all fields of a mapping and send these per value
-(defun show-url-assocs-configuration ()
-  "Shows the section to do with URL mappings."
-  (let ((url-assocs (nx-mapper/rural-mode:url-mappings nx-mapper:*user-settings*)))
-    (spinneret:with-html-string
-      (:h2 "URL Associations")
-      (:p "The following allow you to provide behavior for certain sources, such as redirect or block.")
-      (:div
-       (:button :class "button"
-                :onclick (ps:ps (nyxt/ps:lisp-eval '(nx-mapper:add-mapping
-                                                     'nx-mapper/rural-mode:url-mapping
-                                                     'nx-mapper/rural-mode:url-mappings)))
-                "+ Add URL mapping"))
-      (dolist (url-mapping url-assocs)
-        (let ((name (nx-mapper:name url-mapping))
-              (sources (delete nil (nx-mapper/rural-mode:source url-mapping))))
-          (:div
-           (:h3 name)
-           (:p "Invoked with one of these triggers, and type of matching.")
-           (:raw (nx-mapper::show-mapping-sources sources))))))))
+                          "Edit CSS")))))))
+      (:p "No external themes specified."))))
 
 (defun show-scripts-configuration ()
   "Shows the section relevant to user scripts."
-  (let ((scripts (nx-mapper/stylor-mode:scripts nx-mapper:*user-settings*)))
-    (spinneret:with-html-string
-      (:h2 "User Scripts")
-      (:p "The following allow one to tweak the behavior of a site via JavaScript.")
-      (:div
-       (:button :class "button"
-                :onclick (ps:ps (nyxt/ps:lisp-eval '(nx-mapper:add-mapping
-                                                     'nx-mapper/stylor-mode:script
-                                                     'nx-mapper/stylor-mode:scripts)))
-                "+ Add script"))
+  (spinneret:with-html-string
+    (:h2 "User Scripts")
+    (:p "The following allow one to tweak the behavior of a site via JavaScript.")
+    (:div
+     (:button :class "button"
+              :onclick (ps:ps (nyxt/ps:lisp-eval '(nx-mapper:add-mapping
+                                                   'nx-mapper/stylor-mode:script
+                                                   'nx-mapper/stylor-mode:scripts)))
+              "+ Add script"))
+    (alex:if-let ((scripts (nx-mapper/stylor-mode:scripts nx-mapper:*user-settings*)))
       (dolist (script scripts)
         (let ((name (nx-mapper:name script))
               (script-mapping (nx-mapper/stylor-mode:script script))
@@ -309,7 +296,30 @@ Nyxt initialization file."
              ;;             (:code
              ;;              (funcall style-mapping (nx-mapper/stylor-mode:active-internal-theme
              ;;                                      nx-mapper:*user-settings*)))))
-             (t (:pre (:code script-mapping))))))))))
+             (t (:pre (:code script-mapping)))))))
+      (:p "No user scripts specified."))))
+
+;; TODO: add buttons to edit all fields of a mapping and send these per value
+(defun show-url-assocs-configuration ()
+  "Shows the section to do with URL mappings."
+  (spinneret:with-html-string
+    (:h2 "URL Associations")
+    (:p "The following allow you to provide behavior for certain sources, such as redirect or block.")
+        (:div
+         (:button :class "button"
+                  :onclick (ps:ps (nyxt/ps:lisp-eval '(nx-mapper:add-mapping
+                                                       'nx-mapper/rural-mode:url-mapping
+                                                       'nx-mapper/rural-mode:url-mappings)))
+                  "+ Add URL mapping"))
+    (alex:if-let ((url-assocs (nx-mapper/rural-mode:url-mappings nx-mapper:*user-settings*)))
+      (dolist (url-mapping url-assocs)
+        (let ((name (nx-mapper:name url-mapping))
+              (sources (delete nil (nx-mapper/rural-mode:source url-mapping))))
+          (:div
+           (:h3 name)
+           (:p "Invoked with one of these triggers, and type of matching.")
+           (:raw (nx-mapper::show-mapping-sources sources)))))
+      (:p "No URL mappings specified."))))
 
 (defun show-mapping-sources (sources)
   "Styles SOURCES to be displayed on the customization page."
