@@ -158,6 +158,15 @@ variant based on the system environment.")
    (nyxt:destructor #'cleanup)
    (nyxt:constructor #'initialize)))
 
+(defun internal-style-handler (buffer)
+  "Handler function to re-calculate some styles in every new buffer."
+  (setf (nyxt::style buffer) (compute-buffer-style
+                              (active-internal-theme nx-mapper:*user-settings*)))
+  (when (nyxt:find-submode buffer 'web-mode)
+    (setf (nyxt/web-mode:box-style (nyxt:find-submode buffer 'web-mode))
+          (compute-hint-style
+           (active-internal-theme nx-mapper:*user-settings*)))))
+
 (defun external-style-handler (buffer)
   "Handles setting external styles if the user-defined rules match BUFFER, and applies
 the styles depending on the type of mapping provided."
@@ -193,7 +202,8 @@ the styles depending on the type of mapping provided."
 
 (defmethod initialize ((mode stylor-mode))
   (with-slots (auto-p) mode
-    (unless (or (find (theme *browser*)
+    (unless (or (not (internal-themes nx-mapper:*user-settings*))
+                (find (theme *browser*)
                       (internal-themes nx-mapper:*user-settings*) :test #'equal)
                 (active-internal-theme nx-mapper:*user-settings*))
       (or (and auto-p
@@ -201,11 +211,13 @@ the styles depending on the type of mapping provided."
                    (select-internal-theme (nx-mapper:name (find-internal-variant)) mode)
                    (setf (nyxt::style (buffer mode))
                          (compute-buffer-style
-                          (select-internal-theme (nx-mapper:name (find-internal-variant :dark t)) mode)))))
+                          (select-internal-theme
+                           (nx-mapper:name (find-internal-variant :dark t)) mode)))))
           (select-internal-theme
-           (nx-mapper:name (car (internal-themes nx-mapper:*user-settings*))) mode)))
-    (hooks:add-hook (nyxt:buffer-before-make-hook *browser*) #'internal-style-handler)
-    (hooks:add-hook (nyxt:buffer-loaded-hook (buffer mode)) #'external-style-handler)))
+           (nx-mapper:name (car (internal-themes nx-mapper:*user-settings*))) mode))
+      (hooks:add-hook (nyxt:buffer-before-make-hook *browser*) #'internal-style-handler))
+    (when (internal-themes nx-mapper:*user-settings*)
+      (hooks:add-hook (nyxt:buffer-loaded-hook (buffer mode)) #'external-style-handler))))
 
 (defmethod cleanup ((mode stylor-mode))
   (hooks:remove-hook (nyxt:buffer-loaded-hook (buffer mode)) #'external-style-handler)
@@ -218,66 +230,82 @@ the styles depending on the type of mapping provided."
       (find-if #'theme:dark-p (internal-themes nx-mapper:*user-settings*))
       (find-if-not #'theme:dark-p (internal-themes nx-mapper:*user-settings*))))
 
-(defun internal-style-handler (buffer)
-  "Handler function to re-calculate some styles in every new buffer."
-  (setf (nyxt::style buffer) (compute-buffer-style
-                              (active-internal-theme nx-mapper:*user-settings*)))
-  (when (nyxt:find-submode buffer 'web-mode)
-    (setf (nyxt/web-mode:box-style (nyxt:find-submode buffer 'web-mode))
-          (compute-hint-style
-           (active-internal-theme nx-mapper:*user-settings*)))))
-
 (defun compute-buffer-style (theme)
   (str:concat
    (eval (get-original-interface-style 'nyxt:user-buffer nil t))
-   (funcall (buffer-style (stylist theme)) theme)))
+   (and (stylist theme) (funcall (buffer-style (stylist theme)) theme))))
 
 (defun compute-hint-style (theme)
   (str:concat
    (eval (get-original-interface-style 'nyxt/web-mode:web-mode 'nyxt/web-mode:box-style))
-   (funcall (hint-style (stylist theme)) theme)))
+   (and (stylist theme) (funcall (hint-style (stylist theme)) theme))))
 
 (define-command-global select-internal-theme (&optional name (mode (current-mode 'stylor)))
   "Selects an `internal-theme' with NAME from MODE and applies it."
-  (flet ((compute-prompt-style (theme)
-           (str:concat
-            (eval (get-original-interface-style
-                   'nyxt:prompt-buffer))
-            (funcall (prompt-style (stylist theme)) theme))))
-    (let* ((theme (or (and name
-                           (find name (internal-themes nx-mapper:*user-settings*)
-                                 :key #'nx-mapper:name :test #'string=))
-                      (nyxt:prompt1
-                        :prompt "Select theme"
-                        :sources (make-instance 'theme-source))))
-           (status-style (str:concat
-                          (eval (get-original-interface-style 'nyxt:status-buffer))
-                          (funcall (status-style (stylist theme)) theme)))
-           (message-style (str:concat
-                           (eval (get-original-interface-style
-                                  'nyxt:window 'nyxt:message-buffer-style))
-                           (funcall (message-style (stylist theme)) theme))))
+  (let* ((theme (or (and name
+                         (find name (internal-themes nx-mapper:*user-settings*)
+                               :key #'nx-mapper:name :test #'string=))
+                    (nyxt:prompt1
+                      :prompt "Select theme"
+                      :sources (make-instance 'theme-source))))
+         (stylist (stylist theme)))
+    (flet ((compute-prompt-style (theme)
+             (str:concat
+              (eval (get-original-interface-style
+                     'nyxt:prompt-buffer))
+              (and stylist (funcall (prompt-style stylist) theme))))
+           (compute-status-style (theme)
+               (str:concat
+                (eval (get-original-interface-style 'nyxt:status-buffer))
+                (and stylist (funcall (status-style stylist) theme))))
+           (compute-message-style (theme)
+             (str:concat
+              (eval (get-original-interface-style
+                     'nyxt:window 'nyxt:message-buffer-style))
+              (and stylist (funcall (message-style stylist) theme)))))
       (setf (active-internal-theme nx-mapper:*user-settings*) theme
             (theme *browser*) theme)
-      (hooks:add-hook (nyxt:prompt-buffer-make-hook *browser*)
-                      (make-instance
-                       'hooks:handler
-                       :fn (lambda (prompt)
-                             (setf (nyxt:style prompt) (compute-prompt-style
-                                                        (active-internal-theme nx-mapper:*user-settings*))))
-                       :name 'style-prompt-buffer))
+      (if (not (stylist theme))
+          (progn
+            (hooks:remove-hook (nyxt:prompt-buffer-make-hook *browser*)
+                               'style-prompt-buffer)
+            (hooks:add-hook (nyxt:prompt-buffer-make-hook *browser*)
+                            (make-instance
+                             'hooks:handler
+                             :fn (lambda (prompt)
+                                   (setf (nyxt:style prompt)
+                                         (compute-prompt-style
+                                          (active-internal-theme nx-mapper:*user-settings*))))
+                             :name 'style-prompt-buffer-sans-stylist)))
+          (progn
+            (hooks:remove-hook (nyxt:prompt-buffer-make-hook *browser*)
+                               'style-prompt-buffer-sans-stylist)
+            (hooks:add-hook (nyxt:prompt-buffer-make-hook *browser*)
+                            (make-instance
+                             'hooks:handler
+                             :fn (lambda (prompt)
+                                   (setf (nyxt:style prompt)
+                                         (compute-prompt-style
+                                          (active-internal-theme nx-mapper:*user-settings*))))
+                             :name 'style-prompt-buffer))))
       (if (not (current-window))
           (hooks:add-hook (nyxt:window-make-hook *browser*)
                           (make-instance
                            'hooks:handler
                            :fn (lambda (window)
-                                 (setf (nyxt::style (nyxt::status-buffer window)) status-style
-                                       (nyxt:message-buffer-style window) message-style)
+                                 (setf (nyxt::style (nyxt::status-buffer window))
+                                       (compute-status-style (active-internal-theme
+                                                              nx-mapper:*user-settings*))
+                                       (nyxt:message-buffer-style window)
+                                       (compute-message-style (active-internal-theme
+                                                               nx-mapper:*user-settings*)))
                                  (hooks:remove-hook (nyxt:window-make-hook *browser*)
                                                     'style-window-on-startup))
                            :name 'style-window-on-startup))
-          (setf (nyxt::style (nyxt::status-buffer (current-window))) status-style
-                (nyxt:message-buffer-style (current-window)) message-style))
+          (setf (nyxt::style (nyxt::status-buffer (current-window)))
+                (compute-status-style (active-internal-theme nx-mapper:*user-settings*))
+                (nyxt:message-buffer-style (current-window))
+                (compute-message-style (active-internal-theme nx-mapper:*user-settings*))))
       (loop for buffer in (nyxt:buffer-list)
             do (progn
                  (setf (nyxt::style buffer) (compute-buffer-style
