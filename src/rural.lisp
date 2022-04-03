@@ -292,8 +292,8 @@ to dispatch the corresponding request-data."
     ;; TODO: block or redirect per page title
     (progn
       (if (media-p mapping)
-          (set-media-state t request-data)
-          (set-media-state nil request-data))
+          (set-media-state (not (media-enabled-p nx-mapper:*user-settings*)) request-data)
+          (set-media-state (media-enabled-p nx-mapper:*user-settings*) request-data))
       (setf (active-url-mapping nx-mapper:*user-settings*) mapping)
       (if (nyxt:request-resource-hook (current-buffer))
           (cond
