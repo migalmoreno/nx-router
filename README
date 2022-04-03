@@ -23,7 +23,7 @@ However, by default Nyxt won't read the custom source registry path we provided,
 Then, in the init file, ensure to include the following.
 
 #+begin_src lisp
-(asdf:load-after-system :nx-mapper (nyxt-init-file "/path/to/mapper.lisp"))
+(load-after-system :nx-mapper (nyxt-init-file "/path/to/mapper.lisp"))
 
 (define-configuration buffer
   ((default-modes
@@ -65,7 +65,8 @@ As you might notice from the above, you can bundle everything into the global =n
 #+name: rural.lisp
 #+begin_src lisp
 (define-configuration nx-mapper/rural-mode:rural-mode
-  ((nx-mapper/rural-mode:banner-p nil))) ;; Whether to show a blocked page when encountering a block rule
+  ((nx-mapper/rural-mode:banner-p nil) ;; Whether to show a banner when encountering a block rule
+   (nx-mapper/rural-mode:media-enabled-p nil))) ;; Whether to allow media in all sites
 
 (define-configuration nx-mapper/rural-mode:settings
   ((nx-mapper/rural-mode:url-mappings
@@ -328,15 +329,15 @@ Therefore, you can set up a configuration for some URL mappings such as what fol
      (make-mapping "GitHub" '(match-domain "github.com")
                    :blocklist '(:path (or 1 (:contains (not "pulls" "search")))))
      ;; 7
-     (make-mapping "Blocked" '((match-domain "timewastingsite1.com")
-                               (match-domain "timewastingsite2.com"))
+     (make-mapping "Blocked" '((match-domain "timewastingsite1.com"
+                                "timewastingsite2.com"))
                    :blocklist t)))))
 #+end_src
 
 =rural-mode= mapping slots can hold the following values:
 
 - =:redirect= :: this can take a redirect URL as a string, or a single pair of the form =(REPLACEMENT-PATH ORIGINAL-PATHS)=, where =ORIGINAL-PATHS= is a list of paths of the original URL which will be redirected to =REPLACEMENT-PATH=. If you want to redirect all paths except =ORIGINAL-PATHS= to =REPLACEMENT-PATH=, prefix this list with =not=.
-- =:blocklist= :: this is a property list of blocking conditions in the form of =(TYPE VALUE)=, where =TYPE= can be one of =:path= or =:host=, and =VALUE= is either another property list of the form =(TYPE PATHNAMES)=, where =TYPE= is either =:start=, =:end=, or =:contain= to denote the URL comparison and =PATHNAMES= is a list of URL pathnames to draw the comparison against, or an integer to indicate the number of URL /sections/ (e.g. =https://example.com/section_1/section_2=) to block in case the blocking condition value is not known. If =PATHNAMES= is prefixed with =not=, all sites will be blocked except for the specified list. Also, a blocklist can be given the value =t= to block the whole URL for the defined sources.
+- =:blocklist= :: this is a property list of blocking conditions in the form of =(TYPE VALUE)=, where =TYPE= can be one of =:path= or =:host=, and =VALUE= is either another property list of the form =(TYPE PATHNAMES)=, where =TYPE= is either =:starts=, =:ends=, or =:contains= to denote the URL comparison and =PATHNAMES= is a list of URL pathnames to draw the comparison against, or an integer to indicate the number of URL /sections/ (e.g. =https://example.com/section_1/section_2=) to block in case the blocking condition value is not known. If =PATHNAMES= is prefixed with =not=, all sites will be blocked except for the specified list. Also, a blocklist can be given the value =t= to block the whole URL for the defined sources.
 - =:external= :: used to open resources externally. If it's a function, it takes a single parameter =REQUEST-DATA= and can invoke arbitrary Lisp forms within it. If provided as a string, it will run the specified command via =uiop:run-program= with the current URL as its argument in a =format=-like syntax.
 - =:media-p= :: whether to show media in the resource or not. This is useful if you want to block all media via the =nx-mapper/rural-mode:media-enabled-p= slot  in =nx-mapper/rural-mode:settings=, but only override it for certain resources.
 - =:instances= :: provide a list of instances to add to the default sources automatically, which is useful if a service provides an official endpoint where these are stored. It can be provided as either a list or a function which computes the instances.

@@ -112,7 +112,7 @@ Nyxt initialization file."
          (external-themes (nx-mapper/stylor-mode:external-themes nx-mapper:*user-settings*))
          (url-assocs (nx-mapper/rural-mode:url-mappings nx-mapper:*user-settings*))
          (generated-code (format nil "(define-configuration nx-mapper:settings ~&~@{~a~^~&~})"
-                                 ;; (print-configuration internal-themes)
+                                 (print-configuration internal-themes)
                                  (print-configuration external-themes)
                                  (print-configuration url-assocs))))
     (spinneret:with-html-string
