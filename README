@@ -240,7 +240,7 @@ Finally, there's the internal themes rules, where as we can see from the above w
          :color theme:text
          :box-sizing "border-box"
          :z-index "auto")
-        ("#tabs" :display "none")
+        ("#tabs, #controls" :display "none")
         ("#modes"
          :padding-right "2px"
          :background-color theme:tertiary
