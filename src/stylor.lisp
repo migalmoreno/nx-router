@@ -1,4 +1,5 @@
 (uiop:define-package #:nx-mapper/stylor-mode
+  (:nicknames #:stylor)
   (:use #:cl)
   (:import-from #:nyxt
                 #:define-class
@@ -320,3 +321,12 @@ the styles depending on the type of mapping provided."
       (nyxt::print-status)
       (nyxt::echo "")
       theme)))
+
+(define-command-global apply-current-theme ()
+  "Apply the `active-internal-theme''s color scheme to the current page."
+  (nyxt::html-set-style
+   (funcall (buffer-style
+             (stylist
+              (active-internal-theme nx-mapper:*user-settings*)))
+            (active-internal-theme nx-mapper:*user-settings*))
+   (current-buffer)))
