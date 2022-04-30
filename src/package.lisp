@@ -1,4 +1,5 @@
 (uiop:define-package #:nx-mapper
+  (:nicknames #:mapper)
   (:use #:cl)
   (:import-from #:nyxt
                 #:define-mode
