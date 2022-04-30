@@ -1,6 +1,6 @@
 # -*- mode: org; -*-
 #+title: nx-mapper
-=nx-mapper= is an extension for the [[https://nyxt.atlas.engineer/][Nyxt]] browser which aims at reducing the complexity associated with defining common browsing behaviors desired by power users, such as specifying the look and behavior of sites, as well as establishing healthy habits through blocklists, or managing your browser themes on the fly. Its purpose is to try to become a unified solution to such problems, which would have otherwise required numerous extensions in conventional browsers and having to switch mental paradigms between each. All these features are provided via two modes: [[#stylor-mode][stylor-mode]] and [[#rural-mode][rural-mode]].
+=nx-mapper= is an extension for the [[https://nyxt.atlas.engineer/][Nyxt]] browser which aims at reducing the complexity associated with defining common browsing behaviors desired by power users in the form of two modes:  [[#stylor-mode][stylor-mode]], which offers fine-grained control over Nyxt's themes and [[#rural-mode][rural-mode]], which allows you to build composable URL associations.
 
 * Installation
 To install the extension, you should download the source and place it in Nyxt's extensions path, by default given by the value of =nyxt-source-registry= (=~/.local/share/nyxt/extensions=).
@@ -8,6 +8,8 @@ To install the extension, you should download the source and place it in Nyxt's 
 #+begin_src sh
 git clone https://github.com/efimerspan/nx-mapper ~/.local/share/nyxt/nx-mapper
 #+end_src
+
+It's worth noting that the extension works with Nyxt 3 onward, so you should probably use it with the latest version of Nyxt master for the time being.
 
 However, if you want to place the extension elsewhere in the system, such as for development purposes, you can configure so via the ASDF source registry mechanism. For this, you'll need to create a file in the source registry directory, =~/.config/common-lisp/source-registry.conf.d/=, and then put the following contents into it, replacing the path with the desired system path.
 
@@ -29,8 +31,8 @@ Then, in the init file, ensure to include the following.
   ((default-modes
     (append
      ;; Either of them or both, depending on what functionality you want
-     '(nx-mapper/stylor-mode:stylor-mode
-       nx-mapper/stylor-mode:rural-mode)
+     '(stylor:stylor-mode
+       rural:rural-mode)
      %slot-default%)))
 #+end_src
 
@@ -38,7 +40,7 @@ Where =/path/to/mapper.lisp= is a custom file that should be created to provide 
 
 #+name: mapper.lisp
 #+begin_src lisp
-(define-configuration nx-mapper:settings
+(define-configuration mapper:settings
   ;; provide all the mapping types
 )
 #+end_src
@@ -47,29 +49,29 @@ As you might notice from the above, you can bundle everything into the global =n
 
 #+name: stylor.lisp
 #+begin_src lisp
-(define-configuration nx-mapper/stylor-mode:stylor-mode
-  ((nx-mapper/stylor-mode:auto-p t))) ;; Whether to set the browser theme according to system settings
+(define-configuration stylor:stylor-mode
+  ((stylor:auto-p t))) ;; Whether to set the browser theme according to system settings
 
 (define-configuration nx-mapper/stylor-mode:settings
-  ((nx-mapper/stylor-mode:scripts
+  ((stylor:scripts
     ;; user script mappings
     )
-   (nx-mapper/stylor-mode:external-themes
+   (stylor:external-themes
     ;; user styles mappings
     )
-   (nx-mapper/stylor-mode:internal-themes
+   (stylor:internal-themes
     ;; browser theme mappings
     )))
 #+end_src
 
 #+name: rural.lisp
 #+begin_src lisp
-(define-configuration nx-mapper/rural-mode:rural-mode
-  ((nx-mapper/rural-mode:banner-p nil) ;; Whether to show a banner when encountering a block rule
-   (nx-mapper/rural-mode:media-enabled-p nil))) ;; Whether to allow media in all sites
+(define-configuration rural:rural-mode
+  ((rural:banner-p nil) ;; Whether to show a banner when encountering a block rule
+   (rural:media-enabled-p nil))) ;; Whether to allow media in all sites
 
-(define-configuration nx-mapper/rural-mode:settings
-  ((nx-mapper/rural-mode:url-mappings
+(define-configuration rural:settings
+  ((rural:url-mappings
     ;; URL associations mappings
   )))
 #+end_src
@@ -88,16 +90,16 @@ As you might notice from the above, you can bundle everything into the global =n
 
 Therefore, using these three concepts, you can include something along the following lines in your Nyxt init file.
 
-#+begin_src elisp
-(import 'nx-mapper:make-mapping)
+#+begin_src lisp
+(import 'mapper:make-mapping)
 
-(define-configuration nx-mapper/stylor-mode:settings
-  ((nx-mapper/stylor-mode:scripts
+(define-configuration stylor:settings
+  ((stylor:scripts
     (list
      (make-mapping "FSF" '(match-domain "fsf.org")
                    :script (ps:ps (setf (ps:@ document body |innerHTML|)
                                         "This was invoked by some sample JavaScript.")))))
-   (nx-mapper/stylor-mode:external-themes
+   (stylor:external-themes
     (list
      (make-mapping "GitHub" '(match-domain "github.com")
                    :style (cl-css:css '(("a[href*=watchers]"
@@ -112,7 +114,7 @@ Therefore, using these three concepts, you can include something along the follo
                     :style (asdf:system-relative-pathname :nx-mapper "styles/medium.css"))
      (make-mapping "Nord Startpage" '(match-domain "startpage.com")
                    :style (quri:uri "https://bpa.st/raw/4WYA"))))
-   (nx-mapper/stylor-mode:internal-themes
+   (stylor:internal-themes
     (list
      (make-mapping "Modus Operandi" nil
                    :background-color "white"
@@ -144,9 +146,9 @@ The next set of rules involve external themes, which carry the same principle as
 Finally, there's the internal themes rules, where as we can see from the above we have to issue a name for the mapping, and then a set of theme attributes which are built into the =nyxt/theme= library that ships with the browser as of version =2.2.4=. In addition to these, each internal theme can take a "/stylist/", a custom style crafter that allows you to style specific elements of the browser's interface if you aren't satisfied with the default layout of a certain element, such as the mode line, as well as allowing for dynamic theme change without having to restart the browser. A stylist effectively aims at reducing the complexity associated with having to manually define the =style= slot of many user classes, and can be defined as follows.
 
 #+begin_src lisp
-(define-configuration nx-mapper/stylor-mode:stylist
-  ((nx-mapper/stylor-mode:name "Minimal UI")
-   (nx-mapper/stylor-mode:prompt-style
+(define-configuration stylor:stylist
+  ((stylor:name "Minimal UI")
+   (stylor:prompt-style
     (lambda (theme)
       (theme:themed-css theme
         (* :font-family theme:font-family)
@@ -177,7 +179,7 @@ Finally, there's the internal themes rules, where as we can see from the above w
          :font-weight "bold"
          :background-color theme:secondary
          :color theme:text))))
-   (nx-mapper/stylor-mode:buffer-style
+   (stylor:buffer-style
     (lambda (theme)
       (theme:themed-css theme
         (body
@@ -203,7 +205,7 @@ Finally, there's the internal themes rules, where as we can see from the above w
         (code
          :font-family "Iosevka"
          :background-color theme:tertiary))))
-   (nx-mapper/stylor-mode:status-style
+   (stylor:status-style
     (lambda (theme)
       (theme:themed-css theme
         (body
@@ -251,14 +253,14 @@ Finally, there's the internal themes rules, where as we can see from the above w
          :z-index "auto")
         (.button
          :color theme:text))))
-   (nx-mapper/stylor-mode:message-style
+   (stylor:message-style
     (lambda (theme)
       (theme:themed-css theme
         (body
          :color theme:text
          :background-color theme:background
          :font-family theme:font-family))))
-   (nx-mapper/stylor-mode:hint-style
+   (stylor:hint-style
     (lambda (theme)
       (theme:themed-css theme
         (".nyxt-hint"
@@ -285,10 +287,10 @@ This is an example stylist which I use in my configuration for a more compact an
 Therefore, you can set up a configuration for some URL mappings such as what follows in your Nyxt initialization file.
 
 #+begin_src lisp
-(import 'nx-mapper:make-mapping)
+(import 'mapper:make-mapping)
 
-(define-configuration nx-mapper/rural-mode:settings
-  ((nx-mapper/rural-mode:url-mappings
+(define-configuration rural:settings
+  ((rural:url-mappings
     (list
      ;; 1
      (make-mapping "Instagram" '((match-domain "instagram.com")
@@ -340,7 +342,7 @@ Therefore, you can set up a configuration for some URL mappings such as what fol
 - =:blocklist= :: this is a property list of blocking conditions in the form of =(TYPE VALUE)=, where =TYPE= can be one of =:path= or =:host=, and =VALUE= is either another property list of the form =(TYPE PATHNAMES)=, where =TYPE= is either =:starts=, =:ends=, or =:contains= to denote the URL comparison and =PATHNAMES= is a list of URL pathnames to draw the comparison against, or an integer to indicate the number of URL /sections/ (e.g. =https://example.com/section_1/section_2=) to block in case the blocking condition value is not known. If =PATHNAMES= is prefixed with =not=, all sites will be blocked except for the specified list. Also, a blocklist can be given the value =t= to block the whole URL for the defined sources.
 - =:external= :: used to open resources externally. If it's a function, it takes a single parameter =REQUEST-DATA= and can invoke arbitrary Lisp forms within it. If provided as a string, it will run the specified command via =uiop:run-program= with the current URL as its argument in a =format=-like syntax.
 - =:media-p= :: whether to show media in the resource or not. This is useful if you want to block all media via the =nx-mapper/rural-mode:media-enabled-p= slot  in =nx-mapper/rural-mode:settings=, but only override it for certain resources.
-- =:instances= :: provide a list of instances to add to the default sources automatically, which is useful if a service provides an official endpoint where these are stored. It can be provided as either a list or a function which computes the instances.
+- =:instances= :: provides a list of instances to add to the default sources automatically computed via a custom function, which is useful if a service provides an official endpoint where these are stored.
 
 The following describes the above examples:
 
@@ -359,7 +361,7 @@ The following describes the above examples:
 7. Serves as a general blocklist trigger. To block an entire URL predicate or list of predicates, you can simply pass =t= to the =blocklist= slot.
 
 ** Customization Interface
-For those who aren't well versed with Lisp yet or don't like to tweak around configuration files, a customization interface is provided through the =customize-mappings= command, which will show a two-paned settings page consisting of an automatically generated code snippet to be pasted in the user's Nyxt initialization file on the left pane and the actual extension settings on the right pane.
+For those who aren't well versed with Lisp yet or don't like to tweak around with configuration files, a customization interface is provided through the =customize-mappings= command, which will show a two-paned settings page consisting of an automatically generated code snippet to be pasted in the user's Nyxt initialization file on the left pane and the actual extension settings on the right pane.
 
 Thus, the user can tweak the configuration on the right pane, being able to add, delete, and edit mappings as well as seeing their information in a more user-friendly interface, which is especially useful if they aren't used to a language with lots parentheses. Changes will see themselves reflected on the left pane as the user changes them, but it's important to note these will only persist for the current Nyxt session and it's thereby crucial one copies them over to their configuration so they get persisted.
 
