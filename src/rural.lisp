@@ -1,4 +1,5 @@
 (uiop:define-package #:nx-mapper/rural-mode
+  (:nicknames #:rural)
   (:use #:cl)
   (:import-from #:nyxt
                 #:define-class
@@ -67,10 +68,9 @@ it runs the specified command via `uiop:run-program' with the current URL as arg
                 :documentation "Whether to show media in the site or not.")
    (instances
     nil
-    :type (or null function list)
-    :documentation "This provides a list of instances to add to the default sources, useful if a service
-provides an official endpoint where these are stored. It can be provided as either a list or a function
-which computes the instances."))
+    :type (or null function)
+    :documentation "This provides a function to compute a list of instances to add to the default sources,
+useful if a service provides an official endpoint where these are stored."))
   (:export-class-name-p t)
   (:export-slot-names-p t)
   (:export-accessor-names-p t)
@@ -80,19 +80,18 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
  block lists to mold you the way you access sites."))
 
 (defmethod initialize-instance :after ((mapping url-mapping) &key)
-  (with-slots (instances source) mapping
-    (flet ((construct-predicates ()
-             (mapcar (lambda (instance)
-                       (if (quri:uri-http-p (quri:uri instance))
-                           `(nyxt:match-url ,instance)
-                           `(nyxt:match-host ,instance)))
-                     (delete nil instances))))
-      (alex:when-let ((instances (if (typep instances 'function)
-                                     (funcall instances)
-                                     instances)))
-        (if (nx-mapper::list-of-lists-p source)
-            (setf (source mapping) (append source (construct-predicates)))
-            (setf (source mapping) (cons source (construct-predicates))))))))
+  (nyxt:run-thread "Build list of instances"
+    (with-slots (instances source) mapping
+      (flet ((construct-predicates ()
+               (mapcar (lambda (instance)
+                         (if (quri:uri-http-p (quri:uri instance))
+                             `(nyxt:match-url ,instance)
+                             `(nyxt:match-host ,instance)))
+                       (delete nil (funcall instances)))))
+        (alex:when-let ((instances (funcall instances)))
+          (if (nx-mapper::list-of-lists-p source)
+              (setf (source mapping) (append source (construct-predicates)))
+              (setf (source mapping) (cons source (construct-predicates)))))))))
 
 (defun perform-redirect (mapping url)
   "Performs the redirect of URL as provided by `redirect' in MAPPING."
