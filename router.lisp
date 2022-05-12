@@ -1,51 +1,26 @@
-(uiop:define-package #:nx-mapper/rural-mode
-  (:nicknames #:rural)
-  (:use #:cl)
-  (:import-from #:nyxt
-                #:define-class
-                #:define-user-class
-                #:define-mode
-                #:define-command-global
-                #:current-buffer
-                #:url
-                #:buffer)
-  (:documentation "Provides composable, easy-to-define, and flexible URL mappings for Nyxt."))
-
-(in-package #:nx-mapper/rural-mode)
+(in-package #:nx-router)
 (nyxt:use-nyxt-package-nicknames)
 
-(define-class settings ()
-  ((active-url-mapping
-    nil
-    :type (or null url-mapping)
-    :documentation "`url-mapping' currently active in the browser.")
-   (url-mappings
-    '()
-    :type list
-    :documentation "List of URL mappings that predicates are to be matched against the user's buffers.")
-   (media-enabled-p
-    t
-    :type boolean
-    :documentation "Whether to allow media in sites. This can be overridden per `url-mapping'."))
-  (:export-class-name-p t)
-  (:export-accessor-names-p t)
-  (:accessor-name-transformer (class*:make-name-transformer name)))
-(define-user-class settings)
+(sera:export-always 'make-route)
+(defun make-route (trigger &rest extra-slots &key &allow-other-keys)
+  "Constructs a route. TRIGGER is required and EXTRA-SLOTS can vary
+depending on the complexity of the rule."
+  (apply #'make-instance 'route :trigger trigger extra-slots))
 
+(defun list-of-lists-p (object)
+  "Returns non-nil of OBJECT consists of a list of lists."
+  (and (listp object)
+       (every #'listp object)))
 
-;; TODO: If instances is provided as a function, it can be too computing expensive
-;; on initial Nyxt launch and it sometimes might not even get run at the right time
-;; to be added to the URL mapping sources, needing for the mode to be re-invoked.
-;; Look into using threads.
-(define-class url-mapping (nx-mapper:mapping)
-  ((source
+(define-class route ()
+  ((trigger
     '()
-    :type (list function)
-    :documentation "Source where this mapping should be applied to.")
+    :type (or list function)
+    :documentation "Trigger(s) for this route to be followed.")
    (redirect
     nil
     :type (or list quri:uri string null)
-    :documentation "Main redirect URL to be used or, when :path is given, a single-pair
+    :documentation "Main redirect URL to be used for this route or, when :path is given, a single-pair
 of the form REPLACEMENT-PATH ORIGINAL-PATHS where ORIGINAL-PATHS is a list of paths of the original URL
 which will be redirected to REPLACEMENT-PATH. To redirect all paths except ORIGINAL-PATHS to REPLACEMENT-PATH,
 prefix this list with `not'.")
@@ -56,7 +31,7 @@ prefix this list with `not'.")
 is one of :path or :host, and VALUE is another plist of the form TYPE PATHNAMES where TYPE is either
  :start, :end, or :contain and PATHNAMES is a list of URL pathnames to draw the comparison against. If PATHNAMES
 is prefixed with `not', all sites will be blocked except for the specified list. Also, if this is `t', it
-will block the whole URL for the defined sources.")
+will block the whole URL for the defined triggers.")
    (external
     nil
     :type (or null function string)
@@ -69,53 +44,96 @@ it runs the specified command via `uiop:run-program' with the current URL as arg
    (instances
     nil
     :type (or null function)
-    :documentation "This provides a function to compute a list of instances to add to the default sources,
+    :documentation "This provides a function to compute a list of instances to add to the default triggers,
 useful if a service provides an official endpoint where these are stored."))
   (:export-class-name-p t)
   (:export-slot-names-p t)
   (:export-accessor-names-p t)
   (:accessor-name-transformer (class*:make-name-transformer name))
-  (:documentation "A `url-mapping' is that of a service which often times needs to be
+  (:documentation "A `route' is that of a service which often times needs to be
 redirected to a privacy-friendly alternative. Additionally, it can be used to enforce good habits by setting
  block lists to mold you the way you access sites."))
 
-(defmethod initialize-instance :after ((mapping url-mapping) &key)
-  (nyxt:run-thread "Build list of instances"
-    (with-slots (instances source) mapping
-      (flet ((construct-predicates ()
-               (mapcar (lambda (instance)
-                         (if (quri:uri-http-p (quri:uri instance))
-                             `(nyxt:match-url ,instance)
-                             `(nyxt:match-host ,instance)))
-                       (delete nil (funcall instances)))))
-        (alex:when-let ((instances (funcall instances)))
-          (if (nx-mapper::list-of-lists-p source)
-              (setf (source mapping) (append source (construct-predicates)))
-              (setf (source mapping) (cons source (construct-predicates)))))))))
+(define-mode router-mode ()
+  "Applies a set of routes on the current browsing session."
+  ((banner-p
+    :type (or null boolean)
+    :documentation "Whether to show a block banner when the route is blocked.")
+   (enforce-p
+    :type (or null boolean)
+    :documentation "Set this to non-nil to prevent you from disabling the mode.")
+   (current-route
+    nil
+    :type (or null route)
+    :documentation "Currently active `route'.")
+   (routes
+    '()
+    :type list
+    :documentation "List of provided routes to be matched against current buffer.")
+   (media-enabled-p
+    t
+    :type boolean
+    :documentation "Whether to allow media in routes. This can be overridden per `route'.")))
 
-(defun perform-redirect (mapping url)
-  "Performs the redirect of URL as provided by `redirect' in MAPPING."
-  (if (typep (redirect mapping) 'list)
+(defmethod nyxt:enable ((mode router-mode) &key)
+  "Initializes `route-mode' to enable routes."
+  (when (nyxt:web-buffer-p (buffer mode))
+    (hooks:add-hook (nyxt:request-resource-hook (buffer mode))
+                    (make-instance
+                     'hooks:handler
+                     :fn (lambda (request-data)
+                           (route-handler request-data mode))
+                     :name 'handle-routing))))
+
+(defmethod nyxt:disable ((mode router-mode) &key)
+  "Cleans up `router-mode', removing the existing routes."
+  (when (and (nyxt:web-buffer-p (buffer mode))
+             (not (enforce-p mode)))
+    (hooks:remove-hook (nyxt:request-resource-hook (buffer mode)) 'handle-routing)))
+
+(define-class source-type (prompter:source)
+  ((prompter:name "Source type")
+   (prompter:constructor (list "Domain" "Host" "Regex" "URL"))))
+
+;; (defmethod initialize-instance :after ((route route) &key)
+;;   (nyxt:run-thread "Builds list of instances"
+;;     (with-slots (instances trigger) route
+;;       (flet ((construct-predicates ()
+;;                (mapcar (lambda (instance)
+;;                          (if (quri:uri-http-p (quri:uri instance))
+;;                              `(nyxt:match-url ,instance)
+;;                              `(nyxt:match-host ,instance)))
+;;                        (delete nil (funcall instances)))))
+;;         (alex:when-let ((instances (funcall instances)))
+;;           (cond
+;;             ((list-of-lists-p trigger)
+;;              (setf (trigger route) (append trigger (construct-predicates))))
+;;             ((listp trigger)
+;;              (setf (trigger route) (cons trigger (construct-predicates))))
+;;             ((functionp trigger)
+;;              (setf (trigger route) (cons trigger (mapcar #'eval (construct-predicates)))))))))))
+
+(defun perform-redirect (route url)
+  "Performs the redirect of URL as provided by `redirect' in ROUTE."
+  (if (typep (redirect route) 'list)
       (progn
-        (loop for (original rules) on (redirect mapping)
+        (loop for (original rules) on (redirect route)
               by #'cddr while rules
               do (handle-redirect-rule rules url))
-        (setf (quri:uri-host url) (first (redirect mapping))))
-      (setf (quri:uri-host url) (redirect mapping))))
+        (setf (quri:uri-host url) (first (redirect route))))
+      (setf (quri:uri-host url) (redirect route))))
 
-;; TODO: For same page requests, it sometimes won't perform the redirect so look
-;; into using `buffer-loaded-hook' or `buffer-load-hook'
-(defun redirect-handler (request-data mapping)
-  "Redirects REQUEST-DATA to the redirect of MAPPING."
+(defun redirect-handler (request-data route)
+  "Redirects REQUEST-DATA to the redirect of ROUTE."
   (let ((url (url request-data)))
-    (perform-redirect mapping url)
+    (perform-redirect route url)
     (setf (url request-data) url))
   request-data)
 
-(defmethod block-handler (request-data mapping)
-  "Specifies rules for which to block REQUEST-DATA from loading in MAPPING."
+(defun block-handler (request-data route)
+  "Specifies rules for which to block REQUEST-DATA from loading in ROUTE."
   (let ((url (url request-data))
-        (blocklist (blocklist mapping))
+        (blocklist (blocklist route))
         block-p)
     (typecase blocklist
       (list (loop for (type rules) on blocklist
@@ -126,40 +144,23 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
         (progn
           ;; TODO: see if I can invoke `buffer-load' on the internal block page
           ;; to avoid having to delete the current buffer
-          (when (banner-p (nyxt:current-mode 'rural))
+          (when (banner-p (current-router-mode))
             (nyxt:delete-current-buffer)
             (display-blocked-page :url (nyxt:render-url url)))
           nil)
         request-data)))
 
-(nyxt::define-internal-page-command-global display-blocked-page (&key (url nil))
-    (buffer "*Blocked Site*" 'nyxt:base-mode)
-  "Shows blocked warning for URL."
-  (spinneret:with-html-string
-    (let ((mapping (nx-mapper/rural-mode:active-url-mapping nx-mapper:*user-settings*)))
-      (:style (nyxt:style buffer))
-      (:div :style (cl-css:inline-css
-                    '(:display "flex" :width "100%"
-                      :justify-content "center"
-                      :align-items "center"
-                      :flex-direction "column"
-                      :height "100%"))
-            (:img :src "https://nyxt.atlas.engineer/image/nyxt_128x128.png")
-            (:h1 "The page you're trying to access has been blocked by nx-mapper.")
-            (when url
-              (:a :style (cl-css:inline-css '(:text-decoration "underline")) url))))))
-
-(defun external-handler (request-data mapping)
-  "Runs the MAPPING's specified external command with REQUEST-DATA."
-  (let ((rule (eval (external mapping)))
+(defun external-handler (request-data route)
+  "Runs the ROUTE's specified external command with REQUEST-DATA."
+  (let ((external-rule (external route))
         (url (url request-data)))
-    (etypecase rule
+    (etypecase external-rule
       (function
-       (when (redirect mapping)
-         (perform-redirect mapping url))
-       (funcall rule request-data))
+       (when (redirect route)
+         (perform-redirect route url))
+       (funcall external-rule request-data))
       (string
-       (uiop:run-program (format rule (quri:render-uri url)))))
+       (uiop:run-program (format external-rule (quri:render-uri url)))))
     nil))
 
 (defun handle-redirect-rule (rules url)
@@ -178,11 +179,11 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
                                    (setf (quri:uri-path url)
                                          (str:replace-first old-prefix replacement
                                                             (quri:uri-path url)))))))))
-
   url)
 
 (defun handle-block-rules (rules url type)
-  "Evaluates if resource blocking should take place in URL according to RULES and TYPE."
+  "Evaluates if resource blocking should take place in URL according to blocking
+RULES and TYPE."
   (let (block-p)
     (flet ((assess-rules (type test rules)
              (setf block-p
@@ -217,7 +218,7 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
                                 (:contains (assess-rules :path :contains paths))
                                 (:starts (assess-rules :path :starts paths))
                                 (:ends (assess-rules :path :ends paths))))))
-           ;; TODO: allow to block user-provided predicate that takes the URL mapping path
+           ;; TODO: allow to block user-provided predicate that takes the URL rule path
            (integer (when (= (length (str:split-omit-nulls "/" (quri:uri-path url)))
                              rules)
                       (setf block-p t)))))
@@ -259,70 +260,68 @@ TYPE can be one of :host, :path or :domain, while EQ-FN can be one of :starts, :
                     (funcall predicate prefix uri-part)))
               url-parts))))
 
-(define-mode rural-mode ()
-  "Apply a set of rules on a site."
-  ((nyxt:glyph "🖇")
-   (nyxt:constructor #'initialize)
-   (nyxt:destructor #'cleanup)
-   (banner-p t :type boolean
-               :documentation "Whether to show a block banner when the current site is blocked.")
-   (enforce-p nil :type boolean
-                  :documentation "Set this to non-nil to prevent you from disabling the mode.")))
-
 (defun set-media-state (state request-data)
-  "Sets the value of `url-media-p' to STATE for the current REQUEST-DATA."
+  "Sets the value of `media-p' to STATE for the current REQUEST-DATA."
   (nyxt:ffi-buffer-auto-load-image (buffer request-data) state)
   (nyxt:ffi-buffer-enable-media (buffer request-data) state))
 
-;; TODO: third party requests, such as embedded frames, are still being triggered
-;; as per https://github.com/atlas-engineer/nyxt/issues/980
-(defun url-mapping-handler (request-data)
-  "Handles buffer and the `rural-mode' URL mapping associations
-to dispatch the corresponding request-data."
-  (alex:if-let ((mapping (find-if (lambda (mapping)
-                                    (let ((source (source mapping)))
-                                      (if (nx-mapper::list-of-lists-p source)
-                                          (some (lambda (predicate)
-                                                  (funcall (eval predicate) (url request-data)))
-                                                source)
-                                          (funcall (eval source) (url request-data)))))
-                                  (url-mappings nx-mapper:*user-settings*))))
-    ;; TODO: external handler for certain URL parts
-    ;; TODO: block or redirect per page title
+(defun current-router-mode ()
+  "Returns `router-mode' if it's active in the current buffer."
+  (nyxt:find-submode
+   (nyxt:resolve-symbol :router-mode :mode '(:nx-router))))
+
+(defun route-handler (request-data mode)
+  "Handles routes to dispatch with REQUEST-DATA from MODE's buffer."
+  (alex:if-let ((route (find-if (lambda (route)
+                                  (let ((source (trigger route)))
+                                   (cond
+                                     ((list-of-lists-p source)
+                                      (some (lambda (predicate)
+                                              (funcall (eval predicate) (url request-data)))
+                                            source))
+                                     ((listp source)
+                                      (funcall (eval source) (url request-data)))
+                                     ((functionp source)
+                                      (funcall source (url request-data))))))
+                                (routes mode))))
     (progn
-      (if (media-p mapping)
-          (set-media-state (not (media-enabled-p nx-mapper:*user-settings*)) request-data)
-          (set-media-state (media-enabled-p nx-mapper:*user-settings*) request-data))
-      (setf (active-url-mapping nx-mapper:*user-settings*) mapping)
+      (setf (current-route mode) route)
+      (if (media-p route)
+          (set-media-state (not (media-enabled-p mode)) request-data)
+          (set-media-state (media-enabled-p mode) request-data))
       (if (nyxt:request-resource-hook (current-buffer))
           (cond
-            ((external mapping)
-             (external-handler request-data mapping))
-            ((and (redirect mapping)
-                  (blocklist mapping))
+            ((external route)
+             (external-handler request-data route))
+            ((and (redirect route)
+                  (blocklist route))
              (progn
-               (redirect-handler request-data mapping)
-               (block-handler request-data mapping)))
-            ((and (redirect mapping)
-                  (null (external mapping)))
-             (redirect-handler request-data mapping))
-            ((blocklist mapping)
-             (block-handler request-data mapping))
+               (redirect-handler request-data route)
+               (block-handler request-data route)))
+            ((and (redirect route)
+                  (null (external route)))
+             (redirect-handler request-data route))
+            ((blocklist route)
+             (block-handler request-data route))
             (t request-data))
-          request-data))
+          request-data)))
     (progn
-      (setf (active-url-mapping nx-mapper:*user-settings*) nil)
-      (set-media-state (media-enabled-p nx-mapper:*user-settings*) request-data)
-      request-data)))
+      (setf (current-route mode) nil)
+      (set-media-state (media-enabled-p mode) request-data)
+      request-data))
 
-(defmethod initialize ((mode rural-mode))
-  "Initializes `url-mapping-mode' to enable URL associations."
-  (when (nyxt:web-buffer-p (buffer mode))
-    (hooks:add-hook (nyxt:request-resource-hook (buffer mode)) #'url-mapping-handler)))
-
-(defmethod cleanup ((mode rural-mode))
-  "Cleans up `url-mapping-mode'."
-  (when (and (nyxt:web-buffer-p (buffer mode))
-             (not (enforce-p mode)))
-    (hooks:remove-hook (nyxt:request-resource-hook (buffer mode))
-                       #'url-mapping-handler)))
+(nyxt::define-internal-page-command-global display-blocked-page (&key (url nil))
+    (buffer "*Blocked Site*" 'nyxt:base-mode)
+  "Shows blocked warning for URL."
+  (spinneret:with-html-string
+    (:style (nyxt:style buffer))
+    (:div :style (cl-css:inline-css
+                  '(:display "flex" :width "100%"
+                    :justify-content "center"
+                    :align-items "center"
+                    :flex-direction "column"
+                    :height "100%"))
+          (:img :src "https://nyxt.atlas.engineer/image/nyxt_128x128.png")
+          (:h1 "The page you're trying to access has been blocked by nx-router.")
+          (when url
+            (:a :style (cl-css:inline-css '(:text-decoration "underline")) url)))))
