@@ -77,41 +77,37 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
 
 (defmethod nyxt:enable ((mode router-mode) &key)
   "Initializes `route-mode' to enable routes."
-  (when (nyxt:web-buffer-p (buffer mode))
-    (hooks:add-hook (nyxt:request-resource-hook (buffer mode))
-                    (make-instance
-                     'hooks:handler
-                     :fn (lambda (request-data)
-                           (route-handler request-data mode))
-                     :name 'handle-routing))))
+  (hooks:add-hook (nyxt:request-resource-hook (buffer mode))
+                  (make-instance
+                   'hooks:handler
+                   :fn (lambda (request-data)
+                         (route-handler request-data mode))
+                   :name 'handle-routing)))
 
 (defmethod nyxt:disable ((mode router-mode) &key)
   "Cleans up `router-mode', removing the existing routes."
-  (when (and (nyxt:web-buffer-p (buffer mode))
-             (not (enforce-p mode)))
+  (when (not (enforce-p mode))
     (hooks:remove-hook (nyxt:request-resource-hook (buffer mode)) 'handle-routing)))
 
 (define-class source-type (prompter:source)
   ((prompter:name "Source type")
    (prompter:constructor (list "Domain" "Host" "Regex" "URL"))))
 
-;; (defmethod initialize-instance :after ((route route) &key)
-;;   (nyxt:run-thread "Builds list of instances"
-;;     (with-slots (instances trigger) route
-;;       (flet ((construct-predicates ()
-;;                (mapcar (lambda (instance)
-;;                          (if (quri:uri-http-p (quri:uri instance))
-;;                              `(nyxt:match-url ,instance)
-;;                              `(nyxt:match-host ,instance)))
-;;                        (delete nil (funcall instances)))))
-;;         (alex:when-let ((instances (funcall instances)))
-;;           (cond
-;;             ((list-of-lists-p trigger)
-;;              (setf (trigger route) (append trigger (construct-predicates))))
-;;             ((listp trigger)
-;;              (setf (trigger route) (cons trigger (construct-predicates))))
-;;             ((functionp trigger)
-;;              (setf (trigger route) (cons trigger (mapcar #'eval (construct-predicates)))))))))))
+(defmethod initialize-instance :after ((route route) &key)
+  (nyxt:run-thread "Builds list of instances"
+    (with-slots (instances trigger) route
+      (flet ((construct-predicates (sources)
+               (mapcar (lambda (instance)
+                         (if (quri:uri-http-p (quri:uri instance))
+                             `(nyxt:match-url ,instance)
+                             `(nyxt:match-host ,instance)))
+                       sources)))
+        (alex:when-let ((sources (and instances (delete nil (funcall instances)))))
+          (cond
+            ((list-of-lists-p trigger)
+             (setf (trigger route) (append trigger (construct-predicates sources))))
+            (t
+             (setf (trigger route) (cons trigger (construct-predicates sources))))))))))
 
 (defun perform-redirect (route url)
   "Performs the redirect of URL as provided by `redirect' in ROUTE."
@@ -125,10 +121,11 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
 
 (defun redirect-handler (request-data route)
   "Redirects REQUEST-DATA to the redirect of ROUTE."
-  (let ((url (url request-data)))
-    (perform-redirect route url)
-    (setf (url request-data) url))
-  request-data)
+  (when (nyxt:new-page-request-p request-data)
+    (let ((url (url request-data)))
+      (perform-redirect route url)
+      (setf (url request-data) url))
+    request-data))
 
 (defun block-handler (request-data route)
   "Specifies rules for which to block REQUEST-DATA from loading in ROUTE."
@@ -142,11 +139,9 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
       (t (setf block-p t)))
     (if block-p
         (progn
-          ;; TODO: see if I can invoke `buffer-load' on the internal block page
-          ;; to avoid having to delete the current buffer
           (when (banner-p (current-router-mode))
-            (nyxt:delete-current-buffer)
-            (display-blocked-page :url (nyxt:render-url url)))
+            (nyxt:buffer-load (nyxt:nyxt-url 'display-blocked-page :url (nyxt:render-url url))
+                              :buffer (buffer request-data)))
           nil)
         request-data)))
 
@@ -262,8 +257,8 @@ TYPE can be one of :host, :path or :domain, while EQ-FN can be one of :starts, :
 
 (defun set-media-state (state request-data)
   "Sets the value of `media-p' to STATE for the current REQUEST-DATA."
-  (nyxt:ffi-buffer-auto-load-image (buffer request-data) state)
-  (nyxt:ffi-buffer-enable-media (buffer request-data) state))
+  (setf (nyxt:ffi-buffer-auto-load-image-enabled-p (buffer request-data)) state)
+  (setf (nyxt:ffi-buffer-media-enabled-p (buffer request-data)) state))
 
 (defun current-router-mode ()
   "Returns `router-mode' if it's active in the current buffer."
@@ -274,22 +269,26 @@ TYPE can be one of :host, :path or :domain, while EQ-FN can be one of :starts, :
   "Handles routes to dispatch with REQUEST-DATA from MODE's buffer."
   (alex:if-let ((route (find-if (lambda (route)
                                   (let ((source (trigger route)))
-                                   (cond
-                                     ((list-of-lists-p source)
-                                      (some (lambda (predicate)
-                                              (funcall (eval predicate) (url request-data)))
-                                            source))
-                                     ((listp source)
-                                      (funcall (eval source) (url request-data)))
-                                     ((functionp source)
-                                      (funcall source (url request-data))))))
+                                    (cond
+                                      ((list-of-lists-p source)
+                                       (some (lambda (predicate)
+                                               (etypecase predicate
+                                                 (list
+                                                  (funcall (eval predicate) (url request-data)))
+                                                 (function
+                                                  (funcall predicate (url request-data)))))
+                                             source))
+                                      ((listp source)
+                                       (funcall (eval source) (url request-data)))
+                                      ((functionp source)
+                                       (funcall source (url request-data))))))
                                 (routes mode))))
     (progn
       (setf (current-route mode) route)
       (if (media-p route)
           (set-media-state (not (media-enabled-p mode)) request-data)
           (set-media-state (media-enabled-p mode) request-data))
-      (if (nyxt:request-resource-hook (current-buffer))
+      (if (nyxt:request-resource-hook (buffer mode))
           (cond
             ((external route)
              (external-handler request-data route))
@@ -298,17 +297,16 @@ TYPE can be one of :host, :path or :domain, while EQ-FN can be one of :starts, :
              (progn
                (redirect-handler request-data route)
                (block-handler request-data route)))
-            ((and (redirect route)
-                  (null (external route)))
+            ((redirect route)
              (redirect-handler request-data route))
             ((blocklist route)
              (block-handler request-data route))
             (t request-data))
-          request-data)))
+          request-data))
     (progn
       (setf (current-route mode) nil)
       (set-media-state (media-enabled-p mode) request-data)
-      request-data))
+      request-data)))
 
 (nyxt::define-internal-page-command-global display-blocked-page (&key (url nil))
     (buffer "*Blocked Site*" 'nyxt:base-mode)
