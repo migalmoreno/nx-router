@@ -3,10 +3,10 @@
 =nx-router= is a URL routing extension for [[https://nyxt.atlas.engineer/][Nyxt]]. It lets you define fine-grained routes so you can enhance the browsing experience without getting your attention sucked away. You can set up URL redirects, block lists, open resources with external applications, all in a cohesive configuration language.
 
 * Installation
-To install the extension, you need to download the source and place it in Nyxt's extensions path, given by the value of =(nyxt-source-registry)= (by default =~/.local/share/nyxt/extensions=).
+To install the extension, you need to download the source and place it in Nyxt's extensions path, given by the value of =nyxt-source-registry= (by default =~/.local/share/nyxt/extensions=).
 
 #+begin_src sh
-git clone https://github.com/efimerspan/nx-router ~/.local/share/nyxt/nx-router
+git clone https://github.com/efimerspan/nx-router ~/.local/share/nyxt/extensions/nx-router
 #+end_src
 
 The extension works with *Nyxt 3 onward*, so ensure to use it with the latest version of Nyxt master for the time being.
@@ -25,7 +25,7 @@ However, by default Nyxt won't read the custom source registry path we provided,
 In your Nyxt initialization file, place the following.
 
 #+begin_src lisp
-(load-after-system :nx-router (nyxt-init-file "/path/to/router.lisp"))
+(load-after-system :nx-router (nyxt-config-file "/path/to/router.lisp"))
 
 (define-configuration buffer
   ((default-modes `(router:router-mode ,@%slot-default%))))
@@ -34,7 +34,7 @@ In your Nyxt initialization file, place the following.
 Where =/path/to/router.lisp= is a custom file that should be created to provide the extension settings after the =nx-router= system has been successfully loaded. Inside this file, you should provide the extension options, explained in the following section.
 
 * Configuration
-To get familiar with the format of URL rules in =nx-router=, see the following sample configuration along with the description of what each slot does.
+To get familiar with the format of URL routes in =nx-router=, see the following sample configuration along with the description of what each slot does.
 
 #+begin_src lisp
 (import 'router:make-route)
@@ -71,26 +71,26 @@ To get familiar with the format of URL rules in =nx-router=, see the following s
                  :blocklist t)))))
 #+end_src
 
-=route= slots include a mini-DSL that specifies what URL part to block as well as the comparison type. Personally, I believe this is a bit more straightforward than having to fiddle around with complex regular expressions. The following is a detailed description of all the available slots:
+=route= slots include a mini-DSL that specifies what URL part to block, redirect or invoke externally via a comparison type. Personally, I believe this is a bit more straightforward than having to fiddle around with complex regular expressions and it allows you to define many site behaviors within a single interface. The following is a detailed description of all the available slots:
 
 - =:redirect= :: can take a redirect URL simply as a string or as a cons of the form =(REDIRECT-URI RULE)=, where =RULE= is another pair, with the =car= being either =:path= or =:host=. In the case of =:path=, the =cdr= is a pair of the form =(REPLACEMENT-PATH ORIGINAL-PATHS)=, where =ORIGINAL-PATHS= is a list of paths of the original URL which will be redirected to =REPLACEMENT-PATH=. If you want to redirect all paths except =ORIGINAL-PATHS= to =REPLACEMENT-PATH=, prefix this list with =not=.
-- =:blocklist= :: a property list of blocking conditions in the form of =(TYPE VALUE)=, where =TYPE= can be one of =:path= or =:host=, and =VALUE= is either another property list of the form =(TYPE PATHNAMES)=, where =TYPE= is either =:starts=, =:ends=, or =:contains= to denote the URL comparison and =PATHNAMES= is a list of URL pathnames to draw the comparison against, or an integer to indicate the number of URL /sections/ (e.g. =https://example.com/section_1/section_2=) to block in case the blocking condition value is not known. If =PATHNAMES= is prefixed with =not=, all sites will be blocked except for the specified list. Also, a blocklist can be given the value =t= to block the whole URL for the defined sources.
+- =:blocklist= :: a property list of blocking conditions in the form of =(TYPE VALUE)=, where =TYPE= can be one of =:path= or =:host=, and =VALUE= is either another property list of the form =(TYPE PATHNAMES)=, where =TYPE= is either =:starts=, =:ends=, or =:contains= to denote the URL comparison and =PATHNAMES= is a list of URL pathnames to draw the comparison against, or an integer to indicate the number of URL /sections/ (e.g. =https://example.com/section_1/section_2=) to block in case the blocking condition value is not known. If =PATHNAMES= is prefixed with =not=, all sites will be blocked except for the specified list. Also, a blocklist can be given the value =t= to block all the routes for the defined sources.
 - =:external= :: used to open resources externally. If it's a function, it takes a single parameter =REQUEST-DATA= and can invoke arbitrary Lisp forms within it. If provided as a string, it will run the specified command via =uiop:run-program= with the current URL as its argument in a =format=-like syntax.
 - =:media-p= :: whether to show media in the resource or not. This is useful if you want to block all media via the =router:media-enabled-p= slot, but only override it for certain resources.
-- =:instances= :: provides a custom function to compute a list of instances, which will be added to the route's triggers automatically. This is useful if a service provides an official endpoint where these are stored.
+- =:instances= :: you can provide a custom function to compute a list of instances, which will be added to the route's triggers automatically. This is useful if a service provides an official endpoint where these are stored.
 
 The following describes the above routes as per their order.
 
-- Set up all Instagram requests to redirect to the host =insta.trom.tf= and additionally redirect all its paths which don't start with =/=, =/p/=, or =/tv= to =/u= paths, as this is what the [[https://bibliogram.art/][Bibliogram]] alternative Instagram front-end uses for its URL structure. Do note this route also takes an =instances= slot, which is a custom function like =make-bibliogram-instances= to be provided by the user that will compute a list of instances. You can see a sample list of functions that compute instances in [[https://github.com/efimerspan/guixrc/blob/master/franesio/home/services/web-browsers.scm#L284][my configuration]] or create new ones. This is useful if the service that is used as the =:redirect= slot offers a list of predefined instances, and these will also be added to the route's triggers on route instantiation. Indeed, triggers can also consist of lists of predicates for which to match URLs, which means on the =Instagram= route above, it will match either domains that contain =instagram.com= or URLs that contain the regexp starting with =https://bibliogram.*=.
+- Set up all Instagram requests to redirect to the host =insta.trom.tf= and additionally redirect all its paths which don't start with =/=, =/p/=, or =/tv= to =/u= paths, as this is what the [[https://bibliogram.art/][Bibliogram]] alternative Instagram front-end uses for its URL structure. Do note this route also takes an =instances= slot, which is a custom function like =make-bibliogram-instances= to be provided by the user that will compute a list of instances. You can see a sample list of functions that compute instances in [[https://github.com/efimerspan/quasar/blob/master/quasar/home/services/web-browsers.scm#L286][my configuration]] or create new ones. This is useful if the service that is used as the =:redirect= slot offers a list of predefined instances, and these will also be added to the route's triggers on route instantiation. Indeed, triggers can also consist of lists of predicates for which to match URLs, which means on the =Instagram= route above, it will match either domains that contain =instagram.com= or URLs that contain the regexp starting with =https://bibliogram.*=.
 
 - Redirect all Reddit requests to the =teddit.namazso.eu= host and additionally block all of the paths belonging to this trigger except those that contain the =/comments= path. This would essentially limit the user to only being able to access Reddit publications instead of sections like its main feed.
 
-- Matches on YouTube video URLs, videos hosted on its alternative front-ends such as [[https://invidious.io/][Invidious]],  as well as MP3 files, redirecting all of these requests to =youtube.com=, and dispatching a rule which invokes an external program with the current request data, in this case launching an [[https://mpv.io/][mpv]] player IPC client process to control the player from Emacs. Do note this is a custom function from my personal [[https://github.com/efimerspan/elibs/blob/master/eb-media.el#L155][elibs]], but you could also pass a one-placeholder format string such as =mpv --video=no ~a= to the =:external= slot if you'd rather not use a Lisp form, where =~a= represents the current route URL.
+- Matches on YouTube video URLs, videos hosted on its alternative front-ends such as [[https://invidious.io/][Invidious]],  as well as MP3 files, redirecting all of these requests to =youtube.com=, and dispatching a rule which invokes an external program with the current request data, in this case launching an [[https://mpv.io/][mpv]] player IPC client process to control the player from Emacs. Do note this is a custom function from my [[https://github.com/efimerspan/quasar/blob/master/etc/elibs/eb-media.el#L155][personal configuration]], but you could also pass a one-placeholder format string such as =mpv --video=no ~a= to the =:external= slot if you'd rather not use a Lisp form, where =~a= represents the current route URL.
 
 - Showcases the use of a hostname blocklist, in this case preventing the user from accessing Amazon URLs unless they contain the =smile= hostname.
 
 - Consists of a blocklist for certain paths of the =lemmy.ml= domain; namely, the blocked paths would be those that contain =post= on them or the ones that start with =/u=, which would block all publications and user profiles on the site.
 
--  Provides a combined path rule for =github.com= requests. Combined rules (specified via =or=) in paths allow you to specify two or more predicates that you wish to draw the path comparison against. In this combination, the integer will first indicate that we want to block those paths that consist of a single sub-section (e.g. =https://github.com/profile_name=), /or/ block all paths except the ones which contain =pulls= or =search=. This essentially allows you to specify a more general block rule and bypass it for certain scenarios. In this case, it would block all single-sub-section paths on =github.com= (such as profiles, the marketplace and so on) but at the same time allow you to use GitHub's search engine and see your listed pull requests.
+-  Provides a combined path rule for =github.com= requests. Combined rules (specified via =or=) in paths allow you to specify two or more predicates that you wish to draw the path comparison against. In this specific combination, the integer will first indicate that we want to block those paths that consist of a single sub-section (e.g. =https://github.com/profile_name=), /or/ block all paths except the ones which contain =pulls= or =search=. This essentially allows you to specify a more general block rule and bypass it for certain scenarios. In this case, it would block all single sub-section paths on =github.com= (such as profiles, the marketplace and so on) but at the same time allow you to use GitHub's search engine and see your listed pull requests.
 
 - Serves as a general blocklist trigger. To block an entire URL predicate or list of predicates, you can simply pass =t= to the =blocklist= slot.
