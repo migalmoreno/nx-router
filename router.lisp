@@ -4,7 +4,7 @@
 (sera:export-always 'make-route)
 (defun make-route (trigger &rest extra-slots &key &allow-other-keys)
   "Constructs a route. TRIGGER is required and EXTRA-SLOTS can vary
-depending on the complexity of the rule."
+depending on the complexity of the route."
   (apply #'make-instance 'route :trigger trigger extra-slots))
 
 (defun list-of-lists-p (object)
@@ -76,7 +76,7 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
     :documentation "Whether to allow media in routes. This can be overridden per `route'.")))
 
 (defmethod nyxt:enable ((mode router-mode) &key)
-  "Initializes `route-mode' to enable routes."
+  "Initializes `router-mode' to enable routes."
   (hooks:add-hook (nyxt:request-resource-hook (buffer mode))
                   (make-instance
                    'hooks:handler
@@ -121,7 +121,7 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
 
 (defun redirect-handler (request-data route)
   "Redirects REQUEST-DATA to the redirect of ROUTE."
-  (when (nyxt:new-page-request-p request-data)
+  (when (nyxt:toplevel-p request-data)
     (let ((url (url request-data)))
       (perform-redirect route url)
       (setf (url request-data) url))
@@ -149,13 +149,14 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
   "Runs the ROUTE's specified external command with REQUEST-DATA."
   (let ((external-rule (external route))
         (url (url request-data)))
-    (etypecase external-rule
-      (function
-       (when (redirect route)
-         (perform-redirect route url))
-       (funcall external-rule request-data))
-      (string
-       (uiop:run-program (format external-rule (quri:render-uri url)))))
+    (nyxt:run-thread "Open external resource"
+      (etypecase external-rule
+        (function
+         (when (redirect route)
+           (perform-redirect route url))
+         (funcall external-rule request-data))
+        (string
+         (uiop:run-program (format external-rule (quri:render-uri url))))))
     nil))
 
 (defun handle-redirect-rule (rules url)
