@@ -156,7 +156,9 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
            (perform-redirect route url))
          (funcall external-rule request-data))
         (string
-         (uiop:run-program (format external-rule (quri:render-uri url))))))
+         (uiop:run-program (format external-rule (quri:render-uri url)))))
+      (when (nyxt:toplevel-p request-data)
+        (nyxt::buffer-delete (buffer request-data))))
     nil))
 
 (defun handle-redirect-rule (rules url)
