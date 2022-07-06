@@ -1,6 +1,6 @@
 (defsystem #:nx-router
   :description "nx-router allows you to define composable and flexible routes for Nyxt."
-  :author "efimerspan"
+  :author "conses"
   :license "BSD 3-Clause"
   :version "0.0.1"
   :serial t
