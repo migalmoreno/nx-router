@@ -6,7 +6,7 @@
 To install the extension, you need to download the source and place it in Nyxt's extensions path, given by the value of =nyxt-source-registry= (by default =~/.local/share/nyxt/extensions=).
 
 #+begin_src sh
-git clone https://github.com/efimerspan/nx-router ~/.local/share/nyxt/extensions/nx-router
+git clone https://git.sr.ht/~conses/nx-router ~/.local/share/nyxt/extensions/nx-router
 #+end_src
 
 The extension works with *Nyxt 3 onward*, so ensure to use it with the latest version of Nyxt master for the time being.
