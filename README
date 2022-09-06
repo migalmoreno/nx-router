@@ -26,13 +26,19 @@ However, by default Nyxt won't read the custom source registry path we provided,
 In your Nyxt initialization file, place the following.
 
 #+begin_src lisp
-(load-after-system :nx-router (nyxt-config-file "/path/to/router.lisp"))
-
-(define-configuration buffer
-  ((default-modes `(router:router-mode ,@%slot-default%))))
+(define-nyxt-user-system-and-load nyxt-user/router
+  :depends-on (nx-router)
+  :components ("router.lisp"))
 #+end_src
 
-Where =/path/to/router.lisp= is a custom file that should be created to provide the extension settings after the =nx-router= system has been successfully loaded. Inside this file, you should provide the extension options, explained in the following section.
+Where =router.lisp= is a custom file that should be created to provide the extension settings after the =nx-router= system has been successfully loaded. Inside this file, place the following.
+
+#+begin_src lisp
+(define-configuration web-buffer
+  ((default-modes `(router:router-mode ,@%slot-value%))))
+#+end_src
+
+In addition, you should add the extension options, explained in the following section.
 
 ** Configuration
 To get familiar with the format of URL routes in =nx-router=, see the following sample configuration along with the description of what each slot does.
