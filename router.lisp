@@ -1,14 +1,16 @@
 (in-package #:nx-router)
 (nyxt:use-nyxt-package-nicknames)
 
-(sera:export-always 'make-route)
+(export-always 'make-route)
+(-> make-route ((or function list) &rest t &key &allow-other-keys) t)
 (defun make-route (trigger &rest extra-slots &key &allow-other-keys)
-  "Constructs a route. TRIGGER is required and EXTRA-SLOTS can vary
+  "Construct a `route'. TRIGGER is required and EXTRA-SLOTS can vary
 depending on the complexity of the route."
   (apply #'make-instance 'route :trigger trigger extra-slots))
 
+(-> list-of-lists-p ((or function list)) boolean)
 (defun list-of-lists-p (object)
-  "Returns non-nil of OBJECT consists of a list of lists."
+  "Return non-nil of OBJECT is a list of lists."
   (and (listp object)
        (every #'listp object)))
 
