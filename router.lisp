@@ -37,27 +37,26 @@ will block the whole URL for the defined triggers.")
    (external
     nil
     :type (or null function string)
-    :documentation "This tells the resource is to be opened externally. If function form, it takes
-a single parameter REQUEST-DATA and can invoke arbitrary Lisp forms within it. If provided as a string form,
-it runs the specified command via `uiop:run-program' with the current URL as argument, can be given in
+    :documentation "Instruct the resource is to be opened externally. If a function form, it takes
+a single parameter REQUEST-DATA and can invoke arbitrary Lisp forms within it. If a string form,
+it runs the specified command via `uiop:run-program' with the current URL as argument, and can be given in
  a `format'-like syntax.")
    (media-p nil :type boolean
                 :documentation "Whether to show media in the site or not.")
    (instances
     nil
     :type (or null function)
-    :documentation "This provides a function to compute a list of instances to add to the default triggers,
+    :documentation "A function to compute a list of instances to add to the default triggers,
 useful if a service provides an official endpoint where these are stored."))
   (:export-class-name-p t)
   (:export-slot-names-p t)
   (:export-accessor-names-p t)
   (:accessor-name-transformer (class*:make-name-transformer name))
-  (:documentation "A `route' is that of a service which often times needs to be
-redirected to a privacy-friendly alternative. Additionally, it can be used to enforce good habits by setting
- block lists to mold you the way you access sites."))
+  (:documentation "A `route' is a series of modifications to apply to a url
+to mold the way you interact with it."))
 
 (define-mode router-mode ()
-  "Applies a set of routes on the current browsing session."
+  "Apply a set of routes on the current browsing session."
   ((banner-p
     :type (or null boolean)
     :documentation "Whether to show a block banner when the route is blocked.")
@@ -71,14 +70,14 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
    (routes
     '()
     :type list
-    :documentation "List of provided routes to be matched against current buffer.")
+    :documentation "List of provided routes to be matched against the current buffer.")
    (media-enabled-p
     t
     :type boolean
     :documentation "Whether to allow media in routes. This can be overridden per `route'.")))
 
 (defmethod nyxt:enable ((mode router-mode) &key)
-  "Initializes `router-mode' to enable routes."
+  "Initialize `router-mode' to enable routes."
   (hooks:add-hook (nyxt:request-resource-hook (buffer mode))
                   (make-instance
                    'hooks:handler
@@ -87,7 +86,7 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
                    :name 'handle-routing)))
 
 (defmethod nyxt:disable ((mode router-mode) &key)
-  "Cleans up `router-mode', removing the existing routes."
+  "Clean up `router-mode', removing the existing routes."
   (when (not (enforce-p mode))
     (hooks:remove-hook (nyxt:request-resource-hook (buffer mode)) 'handle-routing)))
 
@@ -112,7 +111,7 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
              (setf (trigger route) (cons trigger (construct-predicates sources))))))))))
 
 (defun perform-redirect (route url)
-  "Performs the redirect of URL as provided by `redirect' in ROUTE."
+  "Perform the redirect of URL as provided by `redirect' in ROUTE."
   (if (typep (redirect route) 'list)
       (progn
         (loop for (original rules) on (redirect route)
@@ -122,46 +121,49 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
       (setf (quri:uri-host url) (redirect route))))
 
 (defun redirect-handler (request-data route)
-  "Redirects REQUEST-DATA to the redirect of ROUTE."
-  (when (nyxt:toplevel-p request-data)
+  "Redirect REQUEST-DATA to the redirect of ROUTE."
+  (when (and request-data (nyxt:toplevel-p request-data))
     (let ((url (url request-data)))
       (perform-redirect route url)
-      (setf (url request-data) url))
-    request-data))
+      (setf (url request-data) url)))
+  request-data)
 
 (defun block-handler (request-data route)
-  "Specifies rules for which to block REQUEST-DATA from loading in ROUTE."
-  (let ((url (url request-data))
-        (blocklist (blocklist route))
-        block-p)
-    (typecase blocklist
-      (list (loop for (type rules) on blocklist
-                    by #'cddr while rules
-                  do (setf block-p (handle-block-rules rules url type))))
-      (t (setf block-p t)))
-    (if block-p
-        (progn
-          (when (banner-p (current-router-mode))
-            (nyxt:buffer-load (nyxt:nyxt-url 'display-blocked-page :url (nyxt:render-url url))
-                              :buffer (buffer request-data)))
-          nil)
-        request-data)))
+  "Specify rules for which to block REQUEST-DATA from loading in ROUTE."
+  (if (and request-data (nyxt:toplevel-p request-data))
+    (let ((url (url request-data))
+          (blocklist (blocklist route))
+          block-p)
+      (typecase blocklist
+        (list (loop for (type rules) on blocklist
+                      by #'cddr while rules
+                    do (setf block-p (handle-block-rules rules url type))))
+        (t (setf block-p t)))
+      (if block-p
+          (progn
+            (when (banner-p (current-router-mode))
+              (nyxt:buffer-load (nyxt:nyxt-url 'display-blocked-page :url (nyxt:render-url url))
+                                :buffer (buffer request-data)))
+            nil)
+          request-data))
+    request-data))
 
 (defun external-handler (request-data route)
-  "Runs the ROUTE's specified external command with REQUEST-DATA."
-  (let ((external-rule (external route))
-        (url (url request-data)))
-    (nyxt:run-thread "Open external resource"
-      (etypecase external-rule
-        (function
-         (when (redirect route)
-           (perform-redirect route url))
-         (funcall external-rule request-data))
-        (string
-         (uiop:run-program (format external-rule (quri:render-uri url)))))
-      (when (nyxt:toplevel-p request-data)
-        (nyxt::buffer-delete (buffer request-data))))
-    nil))
+  "Run the ROUTE's specified external command with REQUEST-DATA."
+  (when request-data
+    (let ((external-rule (external route))
+          (url (url request-data)))
+      (nyxt:run-thread "Open external resource"
+        (etypecase external-rule
+          (function
+           (when (redirect route)
+             (perform-redirect route url))
+           (funcall external-rule request-data))
+          (string
+           (uiop:run-program (format external-rule (quri:render-uri url)))))
+        (when (nyxt:toplevel-p request-data)
+          (nyxt::buffer-delete (buffer request-data))))
+      nil)))
 
 (defun handle-redirect-rule (rules url)
   "Transform URL based on the provided RULES."
@@ -182,7 +184,7 @@ redirected to a privacy-friendly alternative. Additionally, it can be used to en
   url)
 
 (defun handle-block-rules (rules url type)
-  "Evaluates if resource blocking should take place in URL according to blocking
+  "Evaluate if resource blocking should take place in URL according to blocking
 RULES and TYPE."
   (let (block-p)
     (flet ((assess-rules (type test rules)
@@ -234,7 +236,7 @@ RULES and TYPE."
       block-p)))
 
 (defun url-compare (url url-parts &key (type :path) (eq-fn :starts) (return-value nil))
-  "Returns true or return-value when this is non-nil if at least one of URL-PARTS
+  "Return true or return-value when this is non-nil if at least one of URL-PARTS
 matches the provided URL TYPE with EQ-FN.
 TYPE can be one of :host, :path or :domain, while EQ-FN can be one of :starts, :contains, or :ends."
   (let ((uri-part (case type
@@ -261,61 +263,62 @@ TYPE can be one of :host, :path or :domain, while EQ-FN can be one of :starts, :
               url-parts))))
 
 (defun set-media-state (state request-data)
-  "Sets the value of `media-p' to STATE for the current REQUEST-DATA."
+  "Set the value of `media-p' to STATE for the current REQUEST-DATA."
   (setf (nyxt:ffi-buffer-auto-load-image-enabled-p (buffer request-data)) state)
   (setf (nyxt:ffi-buffer-media-enabled-p (buffer request-data)) state))
 
 (defun current-router-mode ()
-  "Returns `router-mode' if it's active in the current buffer."
+  "Return `router-mode' if it's active in the current buffer."
   (nyxt:find-submode
    (nyxt:resolve-symbol :router-mode :mode '(:nx-router))))
 
 (defun route-handler (request-data mode)
-  "Handles routes to dispatch with REQUEST-DATA from MODE's buffer."
-  (alex:if-let ((route (find-if (lambda (route)
-                                  (let ((source (trigger route)))
-                                    (cond
-                                      ((list-of-lists-p source)
-                                       (some (lambda (predicate)
-                                               (etypecase predicate
-                                                 (list
-                                                  (funcall (eval predicate) (url request-data)))
-                                                 (function
-                                                  (funcall predicate (url request-data)))))
-                                             source))
-                                      ((listp source)
-                                       (funcall (eval source) (url request-data)))
-                                      ((functionp source)
-                                       (funcall source (url request-data))))))
-                                (routes mode))))
-    (progn
-      (setf (current-route mode) route)
-      (if (media-p route)
-          (set-media-state (not (media-enabled-p mode)) request-data)
-          (set-media-state (media-enabled-p mode) request-data))
-      (if (nyxt:request-resource-hook (buffer mode))
-          (cond
-            ((external route)
-             (external-handler request-data route))
-            ((and (redirect route)
-                  (blocklist route))
-             (progn
-               (redirect-handler request-data route)
-               (block-handler request-data route)))
-            ((redirect route)
-             (redirect-handler request-data route))
-            ((blocklist route)
-             (block-handler request-data route))
-            (t request-data))
-          request-data))
-    (progn
-      (setf (current-route mode) nil)
-      (set-media-state (media-enabled-p mode) request-data)
-      request-data)))
+  "Handle routes to dispatch with REQUEST-DATA from MODE's buffer."
+  (when request-data
+    (alex:if-let ((route (find-if (lambda (route)
+                                    (let ((source (trigger route)))
+                                      (cond
+                                        ((list-of-lists-p source)
+                                         (some (lambda (predicate)
+                                                 (etypecase predicate
+                                                   (list
+                                                    (funcall (eval predicate) (url request-data)))
+                                                   (function
+                                                    (funcall predicate (url request-data)))))
+                                               source))
+                                        ((listp source)
+                                         (funcall (eval source) (url request-data)))
+                                        ((functionp source)
+                                         (funcall source (url request-data))))))
+                                  (routes mode))))
+      (progn
+        (setf (current-route mode) route)
+        (if (media-p route)
+            (set-media-state (not (media-enabled-p mode)) request-data)
+            (set-media-state (media-enabled-p mode) request-data))
+        (if (nyxt:request-resource-hook (buffer mode))
+            (cond
+              ((external route)
+               (external-handler request-data route))
+              ((and (redirect route)
+                    (blocklist route))
+               (progn
+                 (redirect-handler request-data route)
+                 (block-handler request-data route)))
+              ((redirect route)
+               (redirect-handler request-data route))
+              ((blocklist route)
+               (block-handler request-data route))
+              (t request-data))
+            request-data))
+      (progn
+        (setf (current-route mode) nil)
+        (set-media-state (media-enabled-p mode) request-data)
+        request-data))))
 
 (nyxt::define-internal-page-command-global display-blocked-page (&key (url nil))
     (buffer "*Blocked Site*" 'nyxt:base-mode)
-  "Shows blocked warning for URL."
+  "Show blocked internal page for URL."
   (spinneret:with-html-string
     (:style (nyxt:style buffer))
     (:div :style (cl-css:inline-css
