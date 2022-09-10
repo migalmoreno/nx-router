@@ -21,14 +21,16 @@ depending on the complexity of the route."
     :documentation "Trigger(s) for this route to be followed.")
    (redirect
     nil
-    :type (or list quri:uri string null)
-    :documentation "Main redirect URL to be used for this route or, when :path is given, a single-pair
-of the form REPLACEMENT-PATH ORIGINAL-PATHS where ORIGINAL-PATHS is a list of paths of the original URL
-which will be redirected to REPLACEMENT-PATH. To redirect all paths except ORIGINAL-PATHS to REPLACEMENT-PATH,
-prefix this list with `not'.")
+    :type (or redirect list quri:uri string function symbol null)
+    :documentation "Main redirect to be used for this route. It can be given as a simple string to
+redirect to a hostname, as a cons pair of REDIRECT-URL . REDIRECT-RULES, where REDIRECT-URLS is a plist of
+TYPE RULES where RULES is an alist of cons pairs of the form REPLACEMENT-PATH . ORIGINAL-PATHS where ORIGINAL-PATHS
+is a list of paths of the original URL which will be redirected to REPLACEMENT-PATH. To redirect all
+paths except ORIGINAL-PATHS to REPLACEMENT-PATH, prefix this list with `not'. Alternatively, it can be given as a
+`redirect' object with the appropriate slots or as a function to compute an arbitrary redirect URL.")
    (blocklist
     '()
-    :type (or null list)
+    :type (or blocklist null list)
     :documentation "Property list of blocking conditions in the form of TYPE VALUE where TYPE
 is one of :path or :host, and VALUE is another plist of the form TYPE PATHNAMES where TYPE is either
  :start, :end, or :contain and PATHNAMES is a list of URL pathnames to draw the comparison against. If PATHNAMES
@@ -54,6 +56,46 @@ useful if a service provides an official endpoint where these are stored."))
   (:accessor-name-transformer (class*:make-name-transformer name))
   (:documentation "A `route' is a series of modifications to apply to a url
 to mold the way you interact with it."))
+
+(define-class blocklist ()
+  ((block-type
+    ':path
+    :type keyword
+    :documentation "The type of block that will be test on the URL. Currently, only
+:path and :type are supported.")
+   (rules
+    '()
+    :type list
+    :documentation "A property list of the form TYPE PATHNAMES where TYPE is either
+:start, :end, or :contain and PATHNAMES is a list of URL pathnames to draw the comparison
+against. If PATHNAMES is prefixed with `not', all sites will be blocked except for the
+specified list. Also, if this is `t', it will block the whole URL for the defined triggers."))
+  (:export-class-name-p t)
+  (:export-slot-names-p t)
+  (:export-accessor-names-p t)
+  (:accessor-name-transformer (class*:make-name-transformer name)))
+
+(define-class redirect ()
+  ((redir-type
+    ':path
+    :type keyword
+    :documentation "The type of redirection that will be performed on the URL. Currently,
+only :path is supported.")
+   (rules
+    '()
+    :type list
+    :documentation "An alist of redirection rules, where each entry is a cons of the form
+REPLACEMENT-PATH . ORIGINAL-PATHS, where ORIGINAL-PATHS is a list of paths of the original URL
+which will be redirected to REPLACEMENT-PATH. To redirect all paths except ORIGINAL-PATHS to
+REPLACEMENT-PATH, prefix this list with `not'.")
+   (to
+    ""
+    :type string
+    :documentation "The hostname to redirect to."))
+  (:export-class-name-p t)
+  (:export-slot-names-p t)
+  (:export-accessor-names-p t)
+  (:accessor-name-transformer (class*:make-name-transformer name)))
 
 (define-mode router-mode ()
   "Apply a set of routes on the current browsing session."
@@ -96,7 +138,7 @@ to mold the way you interact with it."))
 
 (defmethod initialize-instance :after ((route route) &key)
   (nyxt:run-thread "Builds list of instances"
-    (with-slots (instances trigger) route
+    (with-slots (instances trigger redirect) route
       (flet ((construct-predicates (sources)
                (mapcar (lambda (instance)
                          (if (quri:uri-http-p (quri:uri instance))
@@ -110,15 +152,65 @@ to mold the way you interact with it."))
             (t
              (setf (trigger route) (cons trigger (construct-predicates sources))))))))))
 
-(defun perform-redirect (route url)
-  "Perform the redirect of URL as provided by `redirect' in ROUTE."
-  (if (typep (redirect route) 'list)
-      (progn
-        (loop for (original rules) on (redirect route)
-              by #'cddr while rules
-              do (handle-redirect-rule rules url))
-        (setf (quri:uri-host url) (first (redirect route))))
-      (setf (quri:uri-host url) (redirect route))))
+(defmethod perform-redirect ((route route) url)
+  "Perform the redirect of URL as provided by the `redirect' slot in ROUTE."
+  (with-slots (redirect) route
+    (etypecase redirect
+      ((or function symbol)
+       (setf (quri:uri-host url) (funcall redirect))
+       url)
+      (redirect
+       (handle-redirect-rule redirect url)
+       (setf (quri:uri-host url) (to redirect))
+       url)
+      (cons
+       (loop for (original . rules) in redirect
+             do (handle-redirect-rule rules url))
+       (setf (quri:uri-host url) (first redirect))
+       url)
+      (string
+       (setf (quri:uri-host url) redirect)
+       url))))
+
+(defun handle-path-redirect (redirect url)
+  "Handle redirect RULES targeted at the URL's path."
+  (car
+   (delete
+    nil
+    (loop for (replacement . original-paths) in redirect
+          collect (if (and (consp original-paths)
+                           (equal (first original-paths) 'not))
+                      (unless (or (url-compare url (remove-if (lambda (path)
+                                                                (string= path "/"))
+                                                              (rest original-paths)))
+                                  (find-if (lambda (prefix)
+                                             (if (str:starts-with? "/" prefix)
+                                                 (string= (quri:uri-path url) "/")))
+                                           (rest original-paths)))
+                        (str:concat replacement (str:join "/" (str:split-omit-nulls "/" (quri:uri-path url)))))
+                      (alex:if-let ((old-prefix
+                                     (url-compare url
+                                                  (if (consp original-paths)
+                                                      original-paths
+                                                      (list original-paths))
+                                                  :return-value t)))
+                        (str:replace-first old-prefix replacement
+                                           (quri:uri-path url))
+                        (quri:uri-path url)))))))
+
+(defun handle-redirect-rule (redirect url)
+  "Transform URL based on the provided REDIRECT."
+  (etypecase redirect
+    (redirect
+     (case (redir-type redirect)
+       (:path (setf (quri:uri-path url) (handle-path-redirect (rules redirect) url)))))
+    (list
+     (loop for (type redirect) on redirect
+             by #'cddr while redirect
+           return (case type
+                    (:path
+                     (setf (quri:uri-path url) (handle-path-redirect redirect url)))))))
+  url)
 
 (defun redirect-handler (request-data route)
   "Redirect REQUEST-DATA to the redirect of ROUTE."
@@ -128,24 +220,76 @@ to mold the way you interact with it."))
       (setf (url request-data) url)))
   request-data)
 
+(defun assess-block-rules (url type test rules)
+  (if (and (consp rules)
+           (equal (first rules) 'not))
+      (not (url-compare url (rest rules) :eq-fn test :type type))
+      (url-compare url (if (consp rules)
+                           rules
+                           (list rules))
+                   :eq-fn test :type type)))
+
+(defun handle-block-rules (rules url type)
+  "Evaluate if resource blocking should take place in URL according to blocking
+RULES and TYPE."
+  (loop for (predicate elements) on rules
+          by #'cddr while elements
+        collect (case predicate
+                  (:contains (assess-block-rules url type :contains elements))
+                  (:starts (assess-block-rules url type :starts elements))
+                  (:ends (assess-block-rules url type :ends elements)))
+          into blocked-results
+        finally (return (not (some #'null blocked-results)))))
+
+(defun handle-path-block (rules url)
+  "Handle blocklist RULES targeted at the URL's path."
+  (etypecase rules
+    (list (if (equal (first rules) 'or)
+              (loop for clause in (rest rules)
+                    collect
+                    (etypecase clause
+                      (list
+                       (handle-block-rules clause url :path))
+                      (integer (= (length (str:split-omit-nulls "/" (quri:uri-path url)))
+                                  clause)))
+                      into clauses
+                    finally (return (not (some #'null clauses))))
+              (handle-block-rules rules url :path)))
+    (integer (= (length (str:split-omit-nulls "/" (quri:uri-path url))) rules))))
+
+(defun handle-host-block (rules url)
+  "Handle blocklist RULES targeted at the URL's hostname."
+  (etypecase rules
+    (list (if (equal (first rules) 'or)
+              (loop for clause in (rest rules)
+                    collect (handle-block-rules clause url :host)
+                      into clauses
+                    finally (return (not (some #'null clauses))))
+              (handle-block-rules rules url :host)))))
+
 (defun block-handler (request-data route)
   "Specify rules for which to block REQUEST-DATA from loading in ROUTE."
   (if (and request-data (nyxt:toplevel-p request-data))
-    (let ((url (url request-data))
-          (blocklist (blocklist route))
-          block-p)
-      (typecase blocklist
-        (list (loop for (type rules) on blocklist
-                      by #'cddr while rules
-                    do (setf block-p (handle-block-rules rules url type))))
-        (t (setf block-p t)))
-      (if block-p
-          (progn
-            (when (banner-p (current-router-mode))
-              (nyxt:buffer-load (nyxt:nyxt-url 'display-blocked-page :url (nyxt:render-url url))
-                                :buffer (buffer request-data)))
-            nil)
-          request-data))
+      (let* ((url (url request-data))
+             (blocklist (blocklist route))
+             (block-p
+               (typecase blocklist
+                 (blocklist (case (block-type blocklist)
+                              (:path (handle-path-block (rules blocklist) url))
+                              (:host (handle-host-block (rules blocklist) url))))
+                 (list (loop for (type rules) on blocklist
+                               by #'cddr while rules
+                             return (case type
+                                      (:path (handle-path-block rules url))
+                                      (:host (handle-host-block rules url)))))
+                 (otherwise t))))
+        (if block-p
+            (progn
+              (when (banner-p (current-router-mode))
+                (nyxt:buffer-load (nyxt:nyxt-url 'display-blocked-page :url (nyxt:render-url url))
+                                  :buffer (buffer request-data)))
+              nil)
+            request-data))
     request-data))
 
 (defun external-handler (request-data route)
@@ -165,80 +309,10 @@ to mold the way you interact with it."))
           (nyxt::buffer-delete (buffer request-data))))
       nil)))
 
-(defun handle-redirect-rule (rules url)
-  "Transform URL based on the provided RULES."
-  (loop for (type redirect) on rules
-        by #'cddr while redirect
-        do (case type
-             (:path (loop for (replacement original-paths) on redirect
-                            by #'cddr while original-paths
-                          do (if (equal (first original-paths) 'not)
-                                 (unless (url-compare url (rest original-paths))
-                                   (setf (quri:uri-path url)
-                                         (str:concat replacement (quri:uri-path url))))
-                                 (alex:if-let ((old-prefix
-                                                (url-compare url original-paths :return-value t)))
-                                   (setf (quri:uri-path url)
-                                         (str:replace-first old-prefix replacement
-                                                            (quri:uri-path url)))))))))
-  url)
-
-(defun handle-block-rules (rules url type)
-  "Evaluate if resource blocking should take place in URL according to blocking
-RULES and TYPE."
-  (let (block-p)
-    (flet ((assess-rules (type test rules)
-             (setf block-p
-                   (if (equal (first rules) 'not)
-                       (unless (url-compare url (rest rules) :eq-fn test :type type)
-                           t)
-                       (when (url-compare url rules :eq-fn test :type type)
-                         t)))))
-      (case type
-        (:path
-         (etypecase rules
-           (list (if (equal (first rules) 'or)
-                     (loop for clause in (rest rules)
-                           collect (progn
-                                     (etypecase clause
-                                       (list
-                                        (loop for (predicate paths) on clause
-                                              by #'cddr while paths
-                                              collect (case predicate
-                                                        (:contains (assess-rules :path :contains paths))
-                                                        (:starts (assess-rules :path :starts paths))
-                                                        (:ends (assess-rules :path :ends paths)))))
-                                       (integer (when (= (length (str:split-omit-nulls "/" (quri:uri-path url)))
-                                                         clause)
-                                                  (setf block-p t))))
-                                     block-p)
-                             into clauses
-                           finally (setf block-p (not (some #'null clauses))))
-                     (loop for (predicate paths) on rules
-                           by #'cddr while paths
-                           do (case predicate
-                                (:contains (assess-rules :path :contains paths))
-                                (:starts (assess-rules :path :starts paths))
-                                (:ends (assess-rules :path :ends paths))))))
-           ;; TODO: allow to block user-provided predicate that takes the URL rule path
-           (integer (when (= (length (str:split-omit-nulls "/" (quri:uri-path url)))
-                             rules)
-                      (setf block-p t)))))
-        ;; TODO: Allow rule combinations for host, but need to abstract away logic to avoid
-        ;; code duplication
-        (:host
-         (loop for (predicate hostnames) on rules
-               by #'cddr while hostnames
-               do (case predicate
-                    (:contains (assess-rules :host :contains hostnames))
-                    (:starts (assess-rules :host :starts hostnames))
-                    (:ends (assess-rules :host :ends hostnames))))))
-      block-p)))
-
 (defun url-compare (url url-parts &key (type :path) (eq-fn :starts) (return-value nil))
-  "Return true or return-value when this is non-nil if at least one of URL-PARTS
-matches the provided URL TYPE with EQ-FN.
-TYPE can be one of :host, :path or :domain, while EQ-FN can be one of :starts, :contains, or :ends."
+  "Return true or RETURN-VALUE if at least one of URL-PARTS matches the
+ provided URL TYPE with EQ-FN. TYPE can be one of :host, :path or :domain,
+while EQ-FN can be one of :starts, :contains, or :ends."
   (let ((uri-part (case type
                     (:host
                      (quri:uri-host url))
@@ -252,14 +326,10 @@ TYPE can be one of :host, :path or :domain, while EQ-FN can be one of :starts, :
                      (otherwise #'str:starts-with-p))))
     (if return-value
         (find-if (lambda (prefix)
-                   (if (string= prefix "/")
-                       (string= (quri:uri-path url) "/")
-                       (funcall predicate prefix uri-part)))
+                   (funcall predicate prefix uri-part))
                  url-parts)
         (some (lambda (prefix)
-                (if (string= prefix "/")
-                    (string= (quri:uri-path url) "/")
-                    (funcall predicate prefix uri-part)))
+                (funcall predicate prefix uri-part))
               url-parts))))
 
 (defun set-media-state (state request-data)
