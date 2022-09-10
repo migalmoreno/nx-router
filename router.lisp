@@ -62,7 +62,7 @@ to mold the way you interact with it."))
     ':path
     :type keyword
     :documentation "The type of block that will be test on the URL. Currently, only
-:path and :type are supported.")
+:path and :host are supported.")
    (rules
     '()
     :type list
@@ -137,13 +137,15 @@ REPLACEMENT-PATH, prefix this list with `not'.")
    (prompter:constructor (list "Domain" "Host" "Regex" "URL"))))
 
 (defmethod initialize-instance :after ((route route) &key)
-  (nyxt:run-thread "Builds list of instances"
+  (nyxt:run-thread "Build list of instances"
     (with-slots (instances trigger redirect) route
       (flet ((construct-predicates (sources)
                (mapcar (lambda (instance)
-                         (if (quri:uri-http-p (quri:uri instance))
-                             `(nyxt:match-url ,instance)
-                             `(nyxt:match-host ,instance)))
+                         `(nyxt:match-host
+                           ,(if (quri:uri-http-p (quri:uri instance))
+                                (str:join "" (str:split-omit-nulls
+                                              "/" (nyxt::schemeless-url (quri:uri instance))))
+                                instance)))
                        sources)))
         (alex:when-let ((sources (and instances (delete nil (funcall instances)))))
           (cond
@@ -342,25 +344,33 @@ while EQ-FN can be one of :starts, :contains, or :ends."
   (nyxt:find-submode
    (nyxt:resolve-symbol :router-mode :mode '(:nx-router))))
 
+(defun find-matching-route (request-data mode)
+  "Find the matching route in MODE from the current REQUEST-DATA."
+  (flet ((triggers-match-p (triggers)
+           (some (lambda (predicate)
+                   (typecase predicate
+                     (list
+                      (funcall (eval predicate) (url request-data)))
+                     (function
+                      (funcall predicate (url request-data)))))
+                 triggers)))
+    (find-if (lambda (route)
+               (let ((source (trigger route)))
+                 (cond
+                   ((list-of-lists-p source)
+                    (triggers-match-p source))
+                   ((listp source)
+                    (if (instances route)
+                        (triggers-match-p source)
+                        (funcall (eval source) (url request-data))))
+                   ((functionp source)
+                    (funcall source (url request-data))))))
+             (routes mode))))
+
 (defun route-handler (request-data mode)
   "Handle routes to dispatch with REQUEST-DATA from MODE's buffer."
   (when request-data
-    (alex:if-let ((route (find-if (lambda (route)
-                                    (let ((source (trigger route)))
-                                      (cond
-                                        ((list-of-lists-p source)
-                                         (some (lambda (predicate)
-                                                 (etypecase predicate
-                                                   (list
-                                                    (funcall (eval predicate) (url request-data)))
-                                                   (function
-                                                    (funcall predicate (url request-data)))))
-                                               source))
-                                        ((listp source)
-                                         (funcall (eval source) (url request-data)))
-                                        ((functionp source)
-                                         (funcall source (url request-data))))))
-                                  (routes mode))))
+    (alex:if-let ((route (find-matching-route request-data mode)))
       (progn
         (setf (current-route mode) route)
         (if (media-p route)
@@ -372,9 +382,8 @@ while EQ-FN can be one of :starts, :contains, or :ends."
                (external-handler request-data route))
               ((and (redirect route)
                     (blocklist route))
-               (progn
-                 (redirect-handler request-data route)
-                 (block-handler request-data route)))
+               (redirect-handler request-data route)
+               (block-handler request-data route))
               ((redirect route)
                (redirect-handler request-data route))
               ((blocklist route)
