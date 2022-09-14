@@ -19,9 +19,14 @@ depending on the complexity of the route."
     '()
     :type (or list function)
     :documentation "Trigger(s) for this route to be followed.")
+   (original
+    nil
+    :type (or null string)
+    :documentation "Original host of the route. Useful for storage purposes (bookmarks, history, etc.) so that
+the original URL is recorded.")
    (redirect
     nil
-    :type (or redirect list quri:uri string function symbol null)
+    :type (or redirect list string function symbol null)
     :documentation "Main redirect to be used for this route. It can be given as a simple string to
 redirect to a hostname, as a cons pair of REDIRECT-URL . REDIRECT-RULES, where REDIRECT-URLS is a plist of
 TYPE RULES where RULES is an alist of cons pairs of the form REPLACEMENT-PATH . ORIGINAL-PATHS where ORIGINAL-PATHS
@@ -131,6 +136,14 @@ REPLACEMENT-PATH, prefix this list with `not'.")
   "Clean up `router-mode', removing the existing routes."
   (when (not (enforce-p mode))
     (hooks:remove-hook (nyxt:request-resource-hook (buffer mode)) 'handle-routing)))
+
+(export-always 'trace-url)
+(-> trace-url (quri:uri) quri:uri)
+(defun trace-url (url)
+  (alex:when-let* ((route (find-matching-route url (current-router-mode)))
+                   (original-host (original route)))
+    (setf (quri:uri-host url) original-host))
+  url)
 
 (define-class source-type (prompter:source)
   ((prompter:name "Source type")
