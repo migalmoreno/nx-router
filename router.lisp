@@ -187,6 +187,7 @@ REPLACEMENT-PATH, prefix this list with `not'.")
        (setf (quri:uri-host url) redirect)
        url))))
 
+(-> handle-path-redirect (list quri:uri) quri:uri)
 (defun handle-path-redirect (redirect url)
   "Handle redirect RULES targeted at the URL's path."
   (car
@@ -213,6 +214,7 @@ REPLACEMENT-PATH, prefix this list with `not'.")
                                            (quri:uri-path url))
                         (quri:uri-path url)))))))
 
+(-> handle-redirect-rule ((or redirect list) quri:uri) quri:uri)
 (defun handle-redirect-rule (redirect url)
   "Transform URL based on the provided REDIRECT."
   (etypecase redirect
@@ -227,7 +229,7 @@ REPLACEMENT-PATH, prefix this list with `not'.")
                      (setf (quri:uri-path url) (handle-path-redirect redirect url)))))))
   url)
 
-(defun redirect-handler (request-data route)
+(defmethod redirect-handler (request-data (route route))
   "Redirect REQUEST-DATA to the redirect of ROUTE."
   (when (and request-data (nyxt:toplevel-p request-data))
     (let ((url (url request-data)))
@@ -235,27 +237,28 @@ REPLACEMENT-PATH, prefix this list with `not'.")
       (setf (url request-data) url)))
   request-data)
 
-(defun assess-block-rules (url type test rules)
-  (if (and (consp rules)
-           (equal (first rules) 'not))
-      (not (url-compare url (rest rules) :eq-fn test :type type))
-      (url-compare url (if (consp rules)
-                           rules
-                           (list rules))
-                   :eq-fn test :type type)))
-
+(-> handle-block-rules (list quri:uri keyword) boolean)
 (defun handle-block-rules (rules url type)
   "Evaluate if resource blocking should take place in URL according to blocking
 RULES and TYPE."
-  (loop for (predicate elements) on rules
-          by #'cddr while elements
-        collect (case predicate
-                  (:contains (assess-block-rules url type :contains elements))
-                  (:starts (assess-block-rules url type :starts elements))
-                  (:ends (assess-block-rules url type :ends elements)))
-          into blocked-results
-        finally (return (not (some #'null blocked-results)))))
+  (flet ((assess-block-rules (url type test rules)
+           (if (and (consp rules)
+                    (equal (first rules) 'not))
+               (not (url-compare url (rest rules) :eq-fn test :type type))
+               (url-compare url (if (consp rules)
+                                    rules
+                                    (list rules))
+                            :eq-fn test :type type))))
+    (loop for (predicate elements) on rules
+            by #'cddr while elements
+          collect (case predicate
+                    (:contains (assess-block-rules url type :contains elements))
+                    (:starts (assess-block-rules url type :starts elements))
+                    (:ends (assess-block-rules url type :ends elements)))
+            into blocked-results
+          finally (return (not (some #'null blocked-results))))))
 
+(-> handle-path-block ((or list integer) quri:uri) boolean)
 (defun handle-path-block (rules url)
   "Handle blocklist RULES targeted at the URL's path."
   (etypecase rules
@@ -272,6 +275,7 @@ RULES and TYPE."
               (handle-block-rules rules url :path)))
     (integer (= (length (str:split-omit-nulls "/" (quri:uri-path url))) rules))))
 
+(-> handle-host-block (list quri:uri) boolean)
 (defun handle-host-block (rules url)
   "Handle blocklist RULES targeted at the URL's hostname."
   (etypecase rules
@@ -282,7 +286,7 @@ RULES and TYPE."
                     finally (return (not (some #'null clauses))))
               (handle-block-rules rules url :host)))))
 
-(defun block-handler (request-data route)
+(defmethod block-handler (request-data (route route))
   "Specify rules for which to block REQUEST-DATA from loading in ROUTE."
   (if (and request-data (nyxt:toplevel-p request-data))
       (let* ((url (url request-data))
@@ -307,23 +311,23 @@ RULES and TYPE."
             request-data))
     request-data))
 
-(defun external-handler (request-data route)
+(defmethod external-handler (request-data (route route))
   "Run the ROUTE's specified external command with REQUEST-DATA."
   (when request-data
     (let ((external-rule (external route))
           (url (url request-data)))
-      (nyxt:run-thread "Open external resource"
-        (etypecase external-rule
-          (function
-           (when (redirect route)
-             (perform-redirect route url))
-           (funcall external-rule request-data))
-          (string
-           (uiop:run-program (format external-rule (quri:render-uri url)))))
-        (when (nyxt:toplevel-p request-data)
-          (nyxt::buffer-delete (buffer request-data))))
+      (typecase external-rule
+        (function
+         (when (redirect route)
+           (perform-redirect route url))
+         (funcall external-rule request-data))
+        (string
+         (uiop:run-program (format external-rule (quri:render-uri url)))))
+      (when (nyxt:toplevel-p request-data)
+        (nyxt::buffer-delete (buffer request-data)))
       nil)))
 
+(-> url-compare (quri:uri list &key (:type keyword) (:eq-fn keyword) (:return-value boolean)) (or string boolean))
 (defun url-compare (url url-parts &key (type :path) (eq-fn :starts) (return-value nil))
   "Return true or RETURN-VALUE if at least one of URL-PARTS matches the
  provided URL TYPE with EQ-FN. TYPE can be one of :host, :path or :domain,
@@ -347,25 +351,30 @@ while EQ-FN can be one of :starts, :contains, or :ends."
                 (funcall predicate prefix uri-part))
               url-parts))))
 
+(-> set-media-state (boolean nyxt:request-data) boolean)
 (defun set-media-state (state request-data)
   "Set the value of `media-p' to STATE for the current REQUEST-DATA."
   (setf (nyxt:ffi-buffer-auto-load-image-enabled-p (buffer request-data)) state)
   (setf (nyxt:ffi-buffer-media-enabled-p (buffer request-data)) state))
 
+(export-always 'current-router-mode)
+(-> current-router-mode () router-mode)
 (defun current-router-mode ()
   "Return `router-mode' if it's active in the current buffer."
   (nyxt:find-submode
    (nyxt:resolve-symbol :router-mode :mode '(:nx-router))))
 
-(defun find-matching-route (request-data mode)
-  "Find the matching route in MODE from the current REQUEST-DATA."
+(export-always 'find-matching-route)
+(-> find-matching-route (quri:uri router-mode) (or route null))
+(defun find-matching-route (url mode)
+  "Find the matching route in MODE from URL."
   (flet ((triggers-match-p (triggers)
            (some (lambda (predicate)
                    (typecase predicate
                      (list
-                      (funcall (eval predicate) (url request-data)))
+                      (funcall (eval predicate) url))
                      (function
-                      (funcall predicate (url request-data)))))
+                      (funcall predicate url))))
                  triggers)))
     (find-if (lambda (route)
                (let ((source (trigger route)))
@@ -375,31 +384,30 @@ while EQ-FN can be one of :starts, :contains, or :ends."
                    ((listp source)
                     (if (instances route)
                         (triggers-match-p source)
-                        (funcall (eval source) (url request-data))))
+                        (funcall (eval source) url)))
                    ((functionp source)
-                    (funcall source (url request-data))))))
+                    (funcall source url)))))
              (routes mode))))
 
-(defun route-handler (request-data mode)
+(defmethod route-handler (request-data (mode router-mode))
   "Handle routes to dispatch with REQUEST-DATA from MODE's buffer."
   (when request-data
-    (alex:if-let ((route (find-matching-route request-data mode)))
-      (progn
+    (alex:if-let ((route (find-matching-route (url request-data) mode)))
+      (with-slots (redirect external blocklist) route
         (setf (current-route mode) route)
         (if (media-p route)
             (set-media-state (not (media-enabled-p mode)) request-data)
             (set-media-state (media-enabled-p mode) request-data))
         (if (nyxt:request-resource-hook (buffer mode))
             (cond
-              ((external route)
+              (external
                (external-handler request-data route))
-              ((and (redirect route)
-                    (blocklist route))
+              ((and redirect blocklist)
                (redirect-handler request-data route)
                (block-handler request-data route))
-              ((redirect route)
+              (redirect
                (redirect-handler request-data route))
-              ((blocklist route)
+              (blocklist
                (block-handler request-data route))
               (t request-data))
             request-data))
