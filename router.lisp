@@ -187,7 +187,7 @@ REPLACEMENT-PATH, prefix this list with `not'.")
        (setf (quri:uri-host url) redirect)
        url))))
 
-(-> handle-path-redirect (list quri:uri) quri:uri)
+(-> handle-path-redirect (list quri:uri) (or quri:uri string))
 (defun handle-path-redirect (redirect url)
   "Handle redirect RULES targeted at the URL's path."
   (car
