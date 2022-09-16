@@ -140,8 +140,15 @@ REPLACEMENT-PATH, prefix this list with `not'.")
 (export-always 'trace-url)
 (-> trace-url (quri:uri) quri:uri)
 (defun trace-url (url)
-  (alex:when-let* ((route (find-matching-route url (current-router-mode)))
-                   (original-host (original route)))
+  (alex:when-let* ((route (find-matching-route url (current-router-mode) :redirect t))
+                   (original-host (original route))
+                   (redir (redirect route)))
+    (when (string= (quri:uri-host url)
+                   (typecase redir
+                     (redirect (to redir))
+                     (cons (car redir))
+                     (string redir)))
+      (perform-redirect route url :reverse t))
     (setf (quri:uri-host url) original-host))
   url)
 
@@ -167,66 +174,86 @@ REPLACEMENT-PATH, prefix this list with `not'.")
             (t
              (setf (trigger route) (cons trigger (construct-predicates sources))))))))))
 
-(defmethod perform-redirect ((route route) url)
-  "Perform the redirect of URL as provided by the `redirect' slot in ROUTE."
+(defmethod perform-redirect ((route route) url &key reverse)
+  "Perform the redirect of URL as provided by the `redirect' slot in ROUTE.
+If REVERSE, reverse the redirect logic."
   (with-slots (redirect) route
     (etypecase redirect
       ((or function symbol)
        (setf (quri:uri-host url) (funcall redirect))
        url)
       (redirect
-       (handle-redirect-rule redirect url)
+       (handle-redirect-rule redirect url :reverse reverse)
        (setf (quri:uri-host url) (to redirect))
        url)
       (cons
        (loop for (original . rules) in redirect
-             do (handle-redirect-rule rules url))
+             do (handle-redirect-rule rules url :reverse reverse))
        (setf (quri:uri-host url) (first redirect))
        url)
       (string
        (setf (quri:uri-host url) redirect)
        url))))
 
-(-> handle-path-redirect (list quri:uri) (or quri:uri string))
-(defun handle-path-redirect (redirect url)
-  "Handle redirect RULES targeted at the URL's path."
+(-> handle-path-redirect (list quri:uri &key (:reverse boolean)) (or string null))
+(defun handle-path-redirect (redirect url &key reverse)
+  "Handle REDIRECT rules targeted at the URL's path.
+If REVERSE, reverse the redirect logic."
   (car
    (delete
     nil
     (loop for (replacement . original-paths) in redirect
-          collect (if (and (consp original-paths)
-                           (equal (first original-paths) 'not))
-                      (unless (or (url-compare url (remove-if (lambda (path)
-                                                                (string= path "/"))
-                                                              (rest original-paths)))
-                                  (find-if (lambda (prefix)
-                                             (if (str:starts-with? "/" prefix)
-                                                 (string= (quri:uri-path url) "/")))
-                                           (rest original-paths)))
-                        (str:concat replacement (str:join "/" (str:split-omit-nulls "/" (quri:uri-path url)))))
-                      (alex:if-let ((old-prefix
-                                     (url-compare url
-                                                  (if (consp original-paths)
-                                                      original-paths
-                                                      (list original-paths))
-                                                  :return-value t)))
-                        (str:replace-first old-prefix replacement
-                                           (quri:uri-path url))
-                        (quri:uri-path url)))))))
+          collect
+          (if reverse
+              (alex:when-let ((prefix (url-compare url (list replacement) :return-value t)))
+                (str:replace-first
+                 prefix
+                 (cond
+                   ((and (consp original-paths)
+                         (equal (first original-paths) 'not))
+                    "")
+                   ((consp original-paths)
+                    (car original-paths))
+                   (t
+                    original-paths))
+                 (quri:uri-path url)))
+              (if (and (consp original-paths)
+                       (equal (first original-paths) 'not))
+                  (unless (or (url-compare url (remove-if (lambda (path)
+                                                            (string= path "/"))
+                                                          (rest original-paths)))
+                              (find-if (lambda (prefix)
+                                         (if (str:starts-with? "/" prefix)
+                                             (string= (quri:uri-path url) "/")))
+                                       (rest original-paths)))
+                    (str:concat replacement (str:join "/" (str:split-omit-nulls "/" (quri:uri-path url)))))
+                  (alex:when-let ((old-prefix
+                                   (url-compare url
+                                                (if (consp original-paths)
+                                                    original-paths
+                                                    (list original-paths))
+                                                :return-value t)))
+                    (str:replace-first old-prefix replacement
+                                       (quri:uri-path url)))))))))
 
-(-> handle-redirect-rule ((or redirect list) quri:uri) quri:uri)
-(defun handle-redirect-rule (redirect url)
-  "Transform URL based on the provided REDIRECT."
+(-> handle-redirect-rule ((or redirect list) quri:uri &key (:reverse boolean)) quri:uri)
+(defun handle-redirect-rule (redirect url &key reverse)
+  "Transform URL based on the provided REDIRECT.
+If REVERSE, reverse the redirect logic."
   (etypecase redirect
     (redirect
      (case (redir-type redirect)
-       (:path (setf (quri:uri-path url) (handle-path-redirect (rules redirect) url)))))
+       (:path (alex:when-let ((path (handle-path-redirect (rules redirect)
+                                                          url :reverse reverse)))
+                (setf (quri:uri-path url) path)))))
     (list
      (loop for (type redirect) on redirect
              by #'cddr while redirect
            return (case type
                     (:path
-                     (setf (quri:uri-path url) (handle-path-redirect redirect url)))))))
+                     (alex:when-let ((path (handle-path-redirect redirect
+                                                                 url :reverse reverse)))
+                       (setf (quri:uri-path url) path)))))))
   url)
 
 (defmethod redirect-handler (request-data (route route))
@@ -365,9 +392,10 @@ while EQ-FN can be one of :starts, :contains, or :ends."
    (nyxt:resolve-symbol :router-mode :mode '(:nx-router))))
 
 (export-always 'find-matching-route)
-(-> find-matching-route (quri:uri router-mode) (or route null))
-(defun find-matching-route (url mode)
-  "Find the matching route in MODE from URL."
+(-> find-matching-route (quri:uri router-mode &key (:redirect boolean)) (or route null))
+(defun find-matching-route (url mode &key redirect)
+  "Find the matching route from MODE's triggers for URL.
+Optionally, match against the route's REDIRECT."
   (flet ((triggers-match-p (triggers)
            (some (lambda (predicate)
                    (typecase predicate
@@ -377,8 +405,16 @@ while EQ-FN can be one of :starts, :contains, or :ends."
                       (funcall predicate url))))
                  triggers)))
     (find-if (lambda (route)
-               (let ((source (trigger route)))
+               (let ((source (trigger route))
+                     (redir (when redirect (redirect route))))
                  (cond
+                   (redir
+                    (and (string= (quri:uri-host url)
+                                  (typecase redir
+                                    (redirect (to redir))
+                                    (cons (car redir))
+                                    (string redir)))
+                         route))
                    ((list-of-lists-p source)
                     (triggers-match-p source))
                    ((listp source)
