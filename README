@@ -105,8 +105,7 @@ See below for some example =router:route= routes.
   You can pass an =:original= slot to the =route=, so that if you wrap Nyxt internal methods like shown below, history entries will get recorded with the original URL, meaning an inverse redirection will be applied to figure out the original structure.
 
   #+begin_src lisp
-  (defmethod nyxt:on-signal-load-finished :around
-      ((mode nyxt/history-mode:history-mode) url)
+  (defmethod nyxt:on-signal-load-finished :around ((mode nyxt/history-mode:history-mode) url)
     (call-next-method mode (router:trace-url url)))
   #+end_src
 
