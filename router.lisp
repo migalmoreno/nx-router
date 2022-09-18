@@ -430,7 +430,8 @@ Optionally, match against the route's REDIRECT."
                      (redir (and redirect (redirect route))))
                  (if (and redir
                           (string= (quri:uri-host url)
-                                   (typecase redir
+                                   (etypecase redir
+                                     ((or function symbol) (funcall redir))
                                      (redirect (to redir))
                                      (cons (car redir))
                                      (string redir)
