@@ -363,7 +363,7 @@ RULES and TYPE."
               (when (banner-p (current-router-mode))
                 (nyxt:buffer-load (nyxt:nyxt-url 'display-blocked-page :url (nyxt:render-url url))
                                   :buffer (buffer request-data)))
-              nil)
+              (setf request-data nil))
             request-data))
     request-data))
 
@@ -372,16 +372,17 @@ RULES and TYPE."
   (when request-data
     (let ((external-rule (external route))
           (url (url request-data)))
+      (when (redirect route)
+        (setf (url request-data) (perform-redirect route url)))
       (typecase external-rule
         (function
-         (when (redirect route)
-           (perform-redirect route url))
-         (funcall external-rule request-data))
+         (nyxt:run-thread "Spawn external rules"
+           (funcall external-rule request-data)))
         (string
          (uiop:run-program (format external-rule (quri:render-uri url)))))
       (when (nyxt:toplevel-p request-data)
-        (nyxt::buffer-delete (buffer request-data)))
-      nil)))
+        (nyxt::buffer-delete (buffer request-data))))
+    nil))
 
 (-> url-compare (quri:uri list &key (:type keyword) (:eq-fn keyword) (:return-value boolean)) (or string boolean))
 (defun url-compare (url url-parts &key (type :path) (eq-fn :starts) (return-value nil))
@@ -467,36 +468,44 @@ Optionally, match against the route's REDIRECT."
         (if (media-p route)
             (set-media-state (not (media-enabled-p mode)) request-data)
             (set-media-state (media-enabled-p mode) request-data))
-        (if (nyxt:request-resource-hook (buffer mode))
-            (cond
-              (external
-               (external-handler request-data route))
-              ((and redirect blocklist)
-               (redirect-handler request-data route)
-               (block-handler request-data route))
-              (redirect
-               (redirect-handler request-data route))
-              (blocklist
-               (block-handler request-data route))
-              (t request-data))
-            request-data))
+        (when (nyxt:request-resource-hook (buffer mode))
+          (when blocklist
+            (setf request-data (block-handler request-data route)))
+          (when redirect
+            (setf request-data (redirect-handler request-data route)))
+          (when external
+            (setf request-data (external-handler request-data route))))
+        request-data)
       (progn
         (setf (current-route mode) nil)
         (set-media-state (media-enabled-p mode) request-data)
         request-data))))
 
-(nyxt::define-internal-page-command-global display-blocked-page (&key (url nil))
+(nyxt::define-internal-page-command-global display-blocked-page (&key url)
     (buffer "*Blocked Site*" 'nyxt:base-mode)
   "Show blocked internal page for URL."
-  (spinneret:with-html-string
-    (:style (nyxt:style buffer))
-    (:div :style (cl-css:inline-css
-                  '(:display "flex" :width "100%"
-                    :justify-content "center"
-                    :align-items "center"
-                    :flex-direction "column"
-                    :height "100%"))
-          (:img :src "https://nyxt.atlas.engineer/image/nyxt_128x128.png")
-          (:h1 "The page you're trying to access has been blocked by nx-router.")
-          (when url
-            (:a :style (cl-css:inline-css '(:text-decoration "underline")) url)))))
+  (let ((blocked-style (theme:themed-css (nyxt:theme nyxt:*browser*)
+                         (body
+                          :padding 0
+                          :margin 0)
+                         (.container
+                          :display "flex"
+                          :height "100vh"
+                          :justify-content "center"
+                          :align-items "center"
+                          :flex-direction "column")
+                         ("#banner"
+                          :display "flex"
+                          :justify-content "center"
+                          :flex-direction "column"
+                          :width "70vw")
+                         ("#url"
+                          :text-decoration "underline"))))
+    (spinneret:with-html-string
+      (:style blocked-style)
+      (:div :class "container"
+            (:img :src "https://nyxt.atlas.engineer/image/nyxt_128x128.png")
+            (:div :id "banner"
+                  (:h1 "The page you're trying to access has been blocked by nx-router.")
+                  (when url
+                    (:a :id "url" :href url url)))))))
