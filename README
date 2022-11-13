@@ -3,6 +3,10 @@
 * nx-router
 =nx-router= is a URL routing extension for [[https://nyxt.atlas.engineer/][Nyxt]]. It lets you define fine-grained routes so you can enhance the browsing experience without getting your attention sucked away. You can set up URL redirects, block lists, open resources with external applications, all in a cohesive configuration language.
 
+#+begin_quote
+Note that the extension might not work consistently with click events, as these are obscured by WebkitGTK, and there is currently no way to redirect =iframes=, which is why this extension is currently aimed at handling top-level requests. For a consistent behavior, you should consider following hints via =follow-hint= or open links in a new buffer through the middle-click button or the context menu.
+#+end_quote
+
 ** Installation
 To install the extension, you need to download the source and place it in Nyxt's extensions path, given by the value of =nyxt-source-registry= (by default =~/.local/share/nyxt/extensions=).
 
@@ -10,7 +14,7 @@ To install the extension, you need to download the source and place it in Nyxt's
 git clone https://git.sr.ht/~conses/nx-router ~/.local/share/nyxt/extensions/nx-router
 #+end_src
 
-The extension works with *Nyxt 3 onward*, so ensure to use it with the latest version of Nyxt master for the time being.
+The extension works with *Nyxt 3 onward* but it's encouraged to use it with the latest version of Nyxt master for the time being.
 
 If you want to place the extension elsewhere in the system, such as for development purposes, you can configure so via the ASDF source registry mechanism. For this, you'll need to create a file in the source registry directory, =~/.config/common-lisp/source-registry.conf.d/=, and then put the following contents into it, replacing the path with the desired system path.
 
@@ -21,9 +25,9 @@ If you want to place the extension elsewhere in the system, such as for developm
 
 Then, make sure to refresh the ASDF cache via =asdf:clear-source-registry=. ASDF will now be able to find the extension on the custom path. For more information on this utility, please refer to the [[https://asdf.common-lisp.dev/asdf.html][ASDF manual]].
 
-However, by default Nyxt won't read the custom source registry path we provided, so ensure to include a =reset-asdf-registries= invocation in the Nyxt's initialization file too.
+By default, Nyxt won't read the custom source registry path we provided, so ensure to include a =reset-asdf-registries= invocation in Nyxt's configuration file too.
 
-In your Nyxt initialization file, place the following.
+In your Nyxt configuration file, place the following.
 
 #+begin_src lisp
 (define-nyxt-user-system-and-load nyxt-user/router
@@ -31,7 +35,7 @@ In your Nyxt initialization file, place the following.
   :components ("router.lisp"))
 #+end_src
 
-Where =router.lisp= is a custom file that should be created to provide the extension settings after the =nx-router= system has been successfully loaded. Inside this file, place the following.
+Where =router.lisp= is a custom file that should you should create relative to Nyxt's configuration directory (=*config-file*='s pathname by default) to provide the extension settings after the =nx-router= system has been successfully loaded. Inside this file, place the following.
 
 #+begin_src lisp
 (define-configuration web-buffer
@@ -71,55 +75,55 @@ Where =router:router-mode= slots include:
 
 See below for some example =router:route= routes.
 
-- Set up all Instagram requests to redirect to the hostname =www.picuki.com= and additionally redirect all the paths that don't start with =/=, =/p/=, or =/tv/= to =/profile/= paths, and all paths that do start with =/p/= to =/media/=, as this is what the alternative front-end uses for its URL structure.
+Set up all Instagram requests to redirect to the hostname =www.picuki.com= and additionally redirect all the paths that don't start with =/=, =/p/=, or =/tv/= to =/profile/= paths, and all paths that do start with =/p/= to =/media/=, as this is what the alternative front-end uses for its URL structure.
 
-  #+begin_src lisp
-  (make-route (match-regex "https://(www.)?insta.*")
-              :redirect (make-instance
-                         'router:redirect
-                         :to "www.picuki.com"
-                         :rules '(("/profile/" . (not "/" "/p/" "/tv/"))
-                                  ("/media/" . "/p/")))
-              :blocklist (make-instance
-                          'router:blocklist
-                          :rules '(:contains (not "/video"))))
+#+begin_src lisp
+(make-route (match-regex "https://(www.)?insta.*")
+            :redirect (make-instance
+                       'router:redirect
+                       :to "www.picuki.com"
+                       :rules '(("/profile/" . (not "/" "/p/" "/tv/"))
+                                ("/media/" . "/p/")))
+            :blocklist (make-instance
+                        'router:blocklist
+                        :rules '(:contains (not "/video"))))
   #+end_src
 
-- Redirect all TikTok requests except the index path to =/@placeholder/video/= since this is what [[https://github.com/pablouser1/ProxiTok][ProxiTok]] uses for its video paths.
+Redirect all TikTok requests except the index path to =/@placeholder/video/= since this is what [[https://github.com/pablouser1/ProxiTok][ProxiTok]] uses for its video paths.
 
-  #+begin_src lisp
-  (make-route (match-domain "tiktok.com")
-              :redirect '("proxitok.herokuapp.com" .
-                          (:path (("/@placeholder/video/" . (not "/"))))))
+#+begin_src lisp
+(make-route (match-domain "tiktok.com")
+            :redirect '("proxitok.herokuapp.com" .
+                        (:path (("/@placeholder/video/" . (not "/"))))))
   #+end_src
 
-  The above uses the cons form of =:redirect= that can be argued to be terser, but you can re-write the redirect to use a =router:redirect= object if it seems clearer to you.
+The above uses the cons form of =:redirect= that can be argued to be terser, but you can re-write the redirect to use a =router:redirect= object if it seems clearer to you.
 
-  #+begin_src lisp
-  (make-route (match-domain "tiktok.com")
-              :redirect (make-instance
-                         'router:redirect
-                         :to "proxitok.herokuapp.com"
-                         :rules '(("/@placeholder/video/" . (not "/" "/@"))))
+#+begin_src lisp
+(make-route (match-domain "tiktok.com")
+            :redirect (make-instance
+                       'router:redirect
+                       :to "proxitok.herokuapp.com"
+                       :rules '(("/@placeholder/video/" . (not "/" "/@"))))
   #+end_src
 
-- Redirect all Reddit requests to the =teddit.namazso.eu= host and additionally block all of the paths belonging to this trigger except those that contain the =/comments= path. This would essentially limit the user to only being able to access Reddit publications instead of sections like its main feed.
+Redirect all Reddit requests to the =teddit.namazso.eu= host and additionally block all of the paths belonging to this trigger except those that contain the =/comments= path. This would essentially limit the user to only being able to access Reddit publications instead of sections like its main feed.
 
-  #+begin_src lisp
-  (make-route (match-domain "reddit.com")
-              :redirect "teddit.namazso.eu"
-              :original "www.reddit.com"
-              :blocklist '(:path (:contains (not "/comments"))))
+#+begin_src lisp
+(make-route (match-domain "reddit.com")
+            :redirect "teddit.namazso.eu"
+            :original "www.reddit.com"
+            :blocklist '(:path (:contains (not "/comments"))))
   #+end_src
 
-  You can pass an =:original= slot to the =route=, so that if you wrap Nyxt internal methods like shown below, history entries will get recorded with the original URL, meaning an inverse redirection will be applied to figure out the original URL structure.
+You can pass an =:original= slot to the =route=, so that if you wrap Nyxt internal methods like shown below, history entries will get recorded with the original URL, meaning an inverse redirection will be applied to figure out the original URL structure.
 
-  #+begin_src lisp
-  (defmethod nyxt:on-signal-load-finished :around ((mode nyxt/history-mode:history-mode) url)
-    (call-next-method mode (router:trace-url url)))
+#+begin_src lisp
+(defmethod nyxt:on-signal-load-finished :around ((mode nyxt/history-mode:history-mode) url)
+  (call-next-method mode (router:trace-url url)))
   #+end_src
 
-- Matches on YouTube video URLs, videos hosted on its alternative front-ends such as [[https://invidious.io/][Invidious]], as well as MP3 files, redirecting all of these requests to =youtube.com=, and dispatching a rule which invokes an external program with the current request data, in this case launching an [[https://mpv.io/][mpv]] player IPC client process through [[https://github.com/kljohann/mpv.el][mpv.el]] to control the player from Emacs. You could also pass a one-placeholder format string such as =mpv --video=no ~a= to the =:external= slot if you'd rather not use a Lisp form, where =~a= represents the current route URL. Note how a route's trigger can also consist of a /list/ of predicates for which to match URLs, which means on the route below, it will match either URLs that contain the video Regexp or URLs that contain the =.mp3= file extension.
+Matches on YouTube video URLs, videos hosted on its alternative front-ends such as [[https://invidious.io/][Invidious]], as well as MP3 files, redirecting all of these requests to =youtube.com=, and dispatching a rule which invokes an external program with the current request data, in this case launching an [[https://mpv.io/][mpv]] player IPC client process through [[https://github.com/kljohann/mpv.el][mpv.el]] to control the player from Emacs. You could also pass a one-placeholder format string such as =mpv --video=no ~a= to the =:external= slot if you'd rather not use a Lisp form, where =~a= represents the current route URL. Note how a route's trigger can also consist of a /list/ of predicates for which to match URLs, which means on the route below, it will match either URLs that contain the video Regexp or URLs that contain the =.mp3= file extension.
 
   #+begin_src lisp
   (make-route '((match-regex ".*/watch\\?v=.*")
@@ -131,92 +135,92 @@ See below for some example =router:route= routes.
                              ,(quri:render-uri (url data))))))
   #+end_src
 
-- The route below takes an =:instances= slot, which is a custom function like =make-invidious-instances= to be provided by the user that will compute a list of instances. This is useful if the service that is used as the =:redirect= slot offers a list of predefined instances, and these will also be added to the route's triggers on route instantiation. =:redirect= slots can also take an arbitrary function which will compute the redirect hostname to use.
+The route below takes an =:instances= slot, which is a custom function like =make-invidious-instances= to be provided by the user that will compute a list of instances. This is useful if the service that is used as the =:redirect= slot offers a list of predefined instances, and these will also be added to the route's triggers on route instantiation. =:redirect= slots can also take an arbitrary function which will compute the redirect hostname to use.
 
-  #+begin_src lisp
-  (defun set-invidious-instance ()
-    "Set the primary Invidious instance."
-    (let ((instances
-            (remove-if-not
-             (lambda (instance)
-               (and (string= (alex:assoc-value (second instance) :region)
-                             "DE")
-                    (string= (alex:assoc-value (second instance) :type)
-                             "https")))
-             (json:with-decoder-simple-list-semantics
-               (json:decode-json-from-string
-                (dex:get "https://api.invidious.io/instances.json"))))))
-      (first (car instances))))
+#+begin_src lisp
+(defun set-invidious-instance ()
+  "Set the primary Invidious instance."
+  (let ((instances
+          (remove-if-not
+           (lambda (instance)
+             (and (string= (alex:assoc-value (second instance) :region)
+                           "DE")
+                  (string= (alex:assoc-value (second instance) :type)
+                           "https")))
+           (json:with-decoder-simple-list-semantics
+             (json:decode-json-from-string
+              (dex:get "https://api.invidious.io/instances.json"))))))
+    (first (car instances))))
 
-  (defun make-invidious-instances ()
-    "Return a list of Invidious instances."
-    (mapcar 'first
-            (json:with-decoder-simple-list-semantics
-              (json:decode-json-from-string
-               (dex:get "https://api.invidious.io/instances.json")))))
+(defun make-invidious-instances ()
+  "Return a list of Invidious instances."
+  (mapcar 'first
+          (json:with-decoder-simple-list-semantics
+            (json:decode-json-from-string
+             (dex:get "https://api.invidious.io/instances.json")))))
 
-  (make-route (match-domain "youtube.com" "youtu.be")
-              :redirect 'set-invidious-instance
-              :instances 'make-invidious-instances
-              :blocklist '(:path (:starts "/c/")))
+(make-route (match-domain "youtube.com" "youtu.be")
+            :redirect 'set-invidious-instance
+            :instances 'make-invidious-instances
+            :blocklist '(:path (:starts "/c/")))
   #+end_src
 
-- In case you'd like to specify a different URL scheme than HTTPS or a different port, you should supply a redirect in the form of a =quri:uri= object. For instance, the following sets up a route that redirects Google search results to a locally-running instance of [[https://github.com/benbusby/whoogle-search][Whoogle]], and where these will appear as if they were searched in Google.
+In case you'd like to specify a different URL scheme than HTTPS or a different port, you should supply a redirect in the form of a =quri:uri= object. For instance, the following sets up a route that redirects Google search results to a locally-running instance of [[https://github.com/benbusby/whoogle-search][Whoogle]], and where these will appear as if they were searched in Google.
 
-  #+begin_src lisp
-  (make-route (match-regex "https://whoogle.*"
-                           "https://.*google.com/search.*")
-              :original (quri:uri "https://www.google.com")
-              :redirect (quri:uri "http://localhost:5000"))
+#+begin_src lisp
+(make-route (match-regex "https://whoogle.*"
+                         "https://.*google.com/search.*")
+            :original (quri:uri "https://www.google.com")
+            :redirect (quri:uri "http://localhost:5000"))
   #+end_src
 
-- If you'd like to randomize your redirect hostname, you can use a service like [[https://sr.ht/~benbusby/farside/][Farside]] by including the following route, which redirects all Twitter URLs to the respective Farside endpoint.
+If you'd like to randomize your redirect hostname, you can use a service like [[https://sr.ht/~benbusby/farside/][Farside]] by including the following route, which redirects all Twitter URLs to the respective Farside endpoint.
 
-  #+begin_src lisp
-  (make-route (match-domain "twitter.com")
-              :redirect (make-instance
-                         'router:redirect
-                         :to "farside.link"
-                         :rules '(("/nitter/" . "/"))))
+#+begin_src lisp
+(make-route (match-domain "twitter.com")
+            :redirect (make-instance
+                       'router:redirect
+                       :to "farside.link"
+                       :rules '(("/nitter/" . "/"))))
   #+end_src
 
-- Showcases the use of a hostname blocklist, in this case preventing the user from accessing Amazon URLs unless they start with the =smile= hostname.
+Showcases the use of a hostname blocklist, in this case preventing the user from accessing Amazon URLs unless they start with the =smile= hostname.
 
-  #+begin_src lisp
-  (make-route (match-domain "amazon.com")
-              :blocklist '(:host (:starts (not "smile"))))
+#+begin_src lisp
+(make-route (match-domain "amazon.com")
+            :blocklist '(:host (:starts (not "smile"))))
   #+end_src
 
-  The above is the property list version of =:blocklist= that can be argued to be terser, but as shown in previous examples, we can rewrite it to use a =router:blocklist= object if it's clearer for us.
+The above is the property list version of =:blocklist= that can be argued to be terser, but as shown in previous examples, we can rewrite it to use a =router:blocklist= object if it's clearer for us.
 
-  #+begin_src lisp
-  (make-route (match-domain "amazon.com")
-              :blocklist (make-instance
-                          'router:blocklist
-                          :block-type :host
-                          :rules '(:starts (not "smile"))))
+#+begin_src lisp
+(make-route (match-domain "amazon.com")
+            :blocklist (make-instance
+                        'router:blocklist
+                        :block-type :host
+                        :rules '(:starts (not "smile"))))
   #+end_src
 
-- Consists of a blocklist for certain paths of the =lemmy.ml= domain; namely, the blocked paths would be those that contain =post= on them or the ones that start with =/u/=, which would block all publications and user profiles on the site.
+Consists of a blocklist for certain paths of the =lemmy.ml= domain; namely, the blocked paths would be those that contain =post= on them or the ones that start with =/u/=, which would block all publications and user profiles on the site.
 
-  #+begin_src lisp
-  (make-route (match-domain "lemmy.ml")
-              :blocklist '(:path (:contains "post" :starts "/u/")))
+#+begin_src lisp
+(make-route (match-domain "lemmy.ml")
+            :blocklist '(:path (:contains "post" :starts "/u/")))
   #+end_src
 
-- Provides a combined path rule for =github.com= requests. Combined rules (specified via =or=) in paths allow you to specify two or more predicates that you wish to draw the path comparison against. In this specific combination, the integer will first indicate that we want to block those paths that consist of a single sub-section (e.g. =https://github.com/profile_name=), /or/ block all paths except the ones which contain =pulls= or =search=. This essentially allows you to specify a more general block rule and bypass it for certain scenarios. In this case, it would block all single sub-section paths on =github.com= (such as profiles, the marketplace and so on) but at the same time allow you to use GitHub's search engine and see your listed pull requests.
+Provides a combined path rule for =github.com= requests. Combined rules (specified via =or=) in paths allow you to specify two or more predicates that you wish to draw the path comparison against. In this specific combination, the integer will first indicate that we want to block those paths that consist of a single sub-section (e.g. =https://github.com/profile_name=), /or/ block all paths except the ones which contain =pulls= or =search=. This essentially allows you to specify a more general block rule and bypass it for certain scenarios. In this case, it would block all single sub-section paths on =github.com= (such as profiles, the marketplace and so on) but at the same time allow you to use GitHub's search engine and see your listed pull requests.
 
-  #+begin_src lisp
-  (make-route (match-domain "github.com")
-              :blocklist '(:path (or 1 (:contains (not "pulls" "search")))))
+#+begin_src lisp
+(make-route (match-domain "github.com")
+            :blocklist '(:path (or 1 (:contains (not "pulls" "search")))))
   #+end_src
 
-- Serves as a general blocklist trigger. To block an entire URL predicate or list of predicates, you can simply pass =t= to the =blocklist= slot.
+Serves as a general blocklist trigger. To block an entire URL predicate or list of predicates, you can simply pass =t= to the =blocklist= slot.
 
-  #+begin_src lisp
-  (make-route (match-domain "timewastingsite1.com"
-                            "timewastingsite2.com")
-              :blocklist t)
+#+begin_src lisp
+(make-route (match-domain "timewastingsite1.com"
+                          "timewastingsite2.com")
+            :blocklist t)
   #+end_src
 
 ** Contributing
