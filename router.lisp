@@ -95,7 +95,7 @@ which will be redirected to REPLACEMENT-PATH. To redirect all paths except ORIGI
 REPLACEMENT-PATH, prefix this list with `not'.")
    (to
     ""
-    :type string
+    :type (or string quri:uri)
     :documentation "The hostname to redirect to."))
   (:export-class-name-p t)
   (:export-slot-names-p t)
@@ -121,7 +121,8 @@ REPLACEMENT-PATH, prefix this list with `not'.")
    (media-enabled-p
     t
     :type boolean
-    :documentation "Whether to allow media in routes. This can be overridden per `route'.")))
+    :documentation "Whether to allow media in routes. This can be overridden per `route'.")
+   (nyxt:glyph "⚑")))
 
 (defmethod nyxt:enable ((mode router-mode) &key)
   "Initialize `router-mode' to enable routes."
@@ -147,7 +148,10 @@ REPLACEMENT-PATH, prefix this list with `not'.")
       ((and redir
             (string= (quri:uri-host url)
                      (typecase redir
-                       (redirect (to redir))
+                       (redirect
+                        (typecase (to redir)
+                          (string (to redir))
+                          (quri:uri (quri:uri-host (to redir)))))
                        (cons (car redir))
                        (string redir)
                        (quri:uri (quri:uri-host redir)))))
@@ -204,14 +208,18 @@ If REVERSE, reverse the redirect logic."
                                 :reverse reverse)
           (if reverse
               original
-              (quri:copy-uri url :host (to redirect))))
+              (quri:copy-uri url :host (typecase (to redirect)
+                                         (string (to redirect))
+                                         (quri:uri (quri:uri-host (to redirect)))))))
          (cons
           (loop for (original . rules) in redirect
                 do (handle-redirect-rule rules url
                                          :reverse reverse))
           (if reverse
               original
-              (quri:copy-uri url :host (first redirect))))
+              (quri:copy-uri url :host (typecase (to redirect)
+                                         (string (to redirect))
+                                         (quri:uri (quri:uri-host (to redirect)))))))
          ((or quri:uri string)
           (if reverse
               original
@@ -432,7 +440,9 @@ Optionally, match against the route's REDIRECT."
                           (string= (quri:uri-host url)
                                    (etypecase redir
                                      ((or function symbol) (funcall redir))
-                                     (redirect (to redir))
+                                     (redirect (typecase (to redir)
+                                                 (string (to redir))
+                                                 (quri:uri (quri:uri-host (to redir)))))
                                      (cons (car redir))
                                      (string redir)
                                      (quri:uri (quri:uri-host redir)))))
