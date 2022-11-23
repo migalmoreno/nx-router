@@ -73,8 +73,7 @@ Where =router:router-mode= slots include:
 - =media-p= :: whether to show media in the resource or not. This is useful if you want to block all media via the =router:media-enabled-p= slot, but only override it for certain resources.
 - =instances= :: you can provide a custom function to compute a list of instances, which will be added to the route's triggers automatically. This is useful if a service provides an official endpoint where these are stored.
 
-See below for some example =router:route= routes.
-
+** Examples
 Set up all Instagram requests to redirect to the hostname =www.picuki.com= and additionally redirect all the paths that don't start with =/=, =/p/=, or =/tv/= to =/profile/= paths, and all paths that do start with =/p/= to =/media/=, as this is what the alternative front-end uses for its URL structure.
 
 #+begin_src lisp
@@ -89,12 +88,12 @@ Set up all Instagram requests to redirect to the hostname =www.picuki.com= and a
                         :rules '(:contains (not "/video"))))
   #+end_src
 
-Redirect all TikTok requests except the index path to =/@placeholder/video/= since this is what [[https://github.com/pablouser1/ProxiTok][ProxiTok]] uses for its video paths.
+Redirect all TikTok requests except the index and usernames to =/@placeholder/video/= since this is what [[https://github.com/pablouser1/ProxiTok][ProxiTok]] uses for its shared video links.
 
 #+begin_src lisp
 (make-route (match-domain "tiktok.com")
             :redirect '("proxitok.herokuapp.com" .
-                        (:path (("/@placeholder/video/" . (not "/"))))))
+                        (:path (("/@placeholder/video/" . (not "/" "/@"))))))
   #+end_src
 
 The above uses the cons form of =:redirect= that can be argued to be terser, but you can re-write the redirect to use a =router:redirect= object if it seems clearer to you.
