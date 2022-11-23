@@ -379,7 +379,7 @@ RULES and TYPE."
          (nyxt:run-thread "Spawn external rules"
            (funcall external-rule request-data)))
         (string
-         (uiop:run-program (format external-rule (quri:render-uri url)))))
+         (uiop:run-program (format nil external-rule (quri:render-uri url)))))
       (when (nyxt:toplevel-p request-data)
         (nyxt::buffer-delete (buffer request-data))))
     nil))
