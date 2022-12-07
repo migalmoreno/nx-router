@@ -139,7 +139,7 @@ REPLACEMENT-PATH, prefix this list with `not'.")
     (hooks:remove-hook (nyxt:request-resource-hook (buffer mode)) 'handle-routing)))
 
 (export-always 'trace-url)
-(-> trace-url (quri:uri) quri:uri)
+(-> trace-url (quri:uri) t)
 (defun trace-url (url)
   (let* ((route (find-matching-route url (current-router-mode) :redirect t))
          (original-host (and route (original route)))
@@ -408,14 +408,8 @@ while EQ-FN can be one of :starts, :contains, or :ends."
                 (funcall predicate prefix uri-part))
               url-parts))))
 
-(-> set-media-state (boolean nyxt:request-data) boolean)
-(defun set-media-state (state request-data)
-  "Set the value of `media-p' to STATE for the current REQUEST-DATA."
-  (setf (nyxt:ffi-buffer-auto-load-image-enabled-p (buffer request-data)) state)
-  (setf (nyxt:ffi-buffer-media-enabled-p (buffer request-data)) state))
-
 (export-always 'current-router-mode)
-(-> current-router-mode () router-mode)
+(-> current-router-mode () (or nyxt:mode null))
 (defun current-router-mode ()
   "Return `router-mode' if it's active in the current buffer."
   (nyxt:find-submode
@@ -461,25 +455,28 @@ Optionally, match against the route's REDIRECT."
 
 (defmethod route-handler (request-data (mode router-mode))
   "Handle routes to dispatch with REQUEST-DATA from MODE's buffer."
-  (when request-data
-    (alex:if-let ((route (find-matching-route (url request-data) mode)))
-      (with-slots (redirect external blocklist) route
-        (setf (current-route mode) route)
-        (if (media-p route)
-            (set-media-state (not (media-enabled-p mode)) request-data)
-            (set-media-state (media-enabled-p mode) request-data))
-        (when (nyxt:request-resource-hook (buffer mode))
-          (when blocklist
-            (setf request-data (block-handler request-data route)))
-          (when redirect
-            (setf request-data (redirect-handler request-data route)))
-          (when external
-            (setf request-data (external-handler request-data route))))
-        request-data)
-      (progn
-        (setf (current-route mode) nil)
-        (set-media-state (media-enabled-p mode) request-data)
-        request-data))))
+  (flet ((set-media-state (state req)
+           (setf (nyxt:ffi-buffer-auto-load-image-enabled-p (buffer req)) state)
+           (setf (nyxt:ffi-buffer-media-enabled-p (buffer req)) state)))
+    (when request-data
+      (alex:if-let ((route (find-matching-route (url request-data) mode)))
+        (with-slots (redirect external blocklist) route
+          (setf (current-route mode) route)
+          (if (media-p route)
+              (set-media-state (not (media-enabled-p mode)) request-data)
+              (set-media-state (media-enabled-p mode) request-data))
+          (when (nyxt:request-resource-hook (buffer mode))
+            (when blocklist
+              (setf request-data (block-handler request-data route)))
+            (when redirect
+              (setf request-data (redirect-handler request-data route)))
+            (when external
+              (setf request-data (external-handler request-data route))))
+          request-data)
+        (progn
+          (setf (current-route mode) nil)
+          (set-media-state (media-enabled-p mode) request-data)
+          request-data)))))
 
 (nyxt::define-internal-page-command-global display-blocked-page (&key url)
     (buffer "*Blocked Site*" 'nyxt:base-mode)
