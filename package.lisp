@@ -1,6 +1,8 @@
+(in-package #:cl-user)
+
 (uiop:define-package #:nx-router
-  (:nicknames #:router)
   (:use #:cl)
+  (:nicknames #:router)
   (:import-from #:nyxt
                 #:define-class
                 #:user-class
@@ -8,7 +10,8 @@
                 #:define-command-global
                 #:current-buffer
                 #:url
-                #:buffer)
+                #:buffer
+                #:render-url)
   (:import-from #:serapeum
                 #:->
                 #:export-always)
