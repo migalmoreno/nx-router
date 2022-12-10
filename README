@@ -1,11 +1,13 @@
 # -*- mode: org; org-html-head-include-default-style: nil; org-html-postamble: nil; -*-
 #+OPTIONS: toc:nil
 * nx-router
-=nx-router= is a URL routing extension for [[https://nyxt.atlas.engineer/][Nyxt]]. It lets you define fine-grained routes so you can enhance the browsing experience without getting your attention sucked away. You can set up URL redirects, block lists, open resources with external applications, all in a cohesive configuration language.
+=nx-router= is a URL routing extension for [[https://nyxt.atlas.engineer/][Nyxt]]. In short, it's an abstraction around the idea of Nyxt handlers, and introduces the concept of =route= objects a user can consume with a set of predefined slots. It's built to be composable by allowing you to combine many routes together and extensible by making it really easy to define new routes.
 
-#+begin_quote
-Note that the extension might not work consistently with click events, as these are obscured by WebkitGTK, and there is currently no way to redirect =iframes=, which is why this extension is currently aimed at handling top-level requests. For a consistent behavior, you should consider following hints via =follow-hint= or open links in a new buffer through the middle-click button or the context menu.
-#+end_quote
+Over time, I found the built-in functionality in Nyxt for resource handling becomes difficult to maintain and reason about. I started by using plain handlers to achieve some of the functionality I needed, but became frustrated with the amount of duplicate logic I found myself writing and the fact I had to come up with everything by myself when I wanted more complex logic.
+
+=nx-router= is built with the aim of finding a common ground to the most common needs in resource handling. It also aims at making it easy for users to create new routes others can use, so that Nyxt users are no longer tied to their own hacky workarounds. It currently provides five routes: a general-purpose redirector, a general-purpose site blocker, a resource opener, a media toggler, and a =web-route= that ties all of these together for more complex requirements.
+
+If you're coming from standard browsers, you can think of =nx-router= as similar to existing solutions like [[https://github.com/einaregilsson/Redirector][Redirector]] and [[https://github.com/proginosko/LeechBlockNG][LeechblockNG]] put together and on steroids. If you're privacy-minded and already use Nyxt, you might have stumbled upon [[https://github.com/kssytsrk/nx-freestance-handler][nx-freestance-handler]], an extension akin to [[https://github.com/libredirect/libredirect][LibRedirect]] which redirects popular sites to their privacy-friendly front-ends. The problem I see with such extensions is they limit the user to  a few predefined sites and create an implicit dependency on their maintainer to update the extension each time one of these goes down or changes its URL structure. See [[*Examples][Examples]] for a walk-through on how to set routes up, including how to replicate all of the =nx-freestance-handler= functionality.
 
 ** Installation
 To install the extension, you need to download the source and place it in Nyxt's extensions path, given by the value of =nyxt-source-registry= (by default =~/.local/share/nyxt/extensions=).
@@ -45,96 +47,155 @@ Where =router.lisp= is a custom file that should you should create relative to N
 In addition, you should add the extension options, explained in the following section.
 
 ** Configuration
-You can configure =nx-router= by customizing the mode's slots as follows.
+You must begin by customizing =router-mode=, a mode that takes all of the user routes and applies them to the currently-running browsing session.
 
 #+begin_src lisp
-(import 'router:make-route)
-
 (define-configuration router:router-mode
-  ((router:enforce-p t)
-   (router:media-enabled-p t)
-   (router:banner-p t)
-   (router:routes '())))
+  ((router:routes
+    (list
+     (make-instance 'router:redirector
+                    :trigger (match-domain "example.org")
+                    :redirect-url "acme.org"
+                    :redirect-rule '(("/example" . (not "/" "wiki"))))
+     (make-instance 'router:blocker
+                    :trigger (match-hostname "www.wonka.inc")
+                    :blocklist t)
+     (make-instance 'router:media-toggler
+                    :trigger (match-url "https://gekko.com/gallery")
+                    :media-p nil)
+     (make-instance 'router:opener
+                    :trigger (match-extension "mp3")
+                    :resource "mpv --video=no ~a")
+     (make-instance 'router:web-route
+                    :trigger (match-regex "https://stark.net/products/.*")
+                    :redirect-url (quri:uri "https://\\1.acme.org/\\2")
+                    :redirect-rule "https://stark.net/products/(\\w+)/(.*)"
+                    :blocklist '(:path (:ends (not ".html")
+                                        :contains "acme"))
+                    :resource (lambda (url)
+                                (add-to-csv url))
+                    :media-p nil)))))
 #+end_src
 
-Where =router:router-mode= slots include:
+As you might notice from above, routes can go from really simple ones to ones with really complex logic baked in. As mentioned before, there are currently five predefined routes, with one of them being a combination of the other four.
 
-- =enforce-p= :: if non-=nil=, this prevents you from disabling the mode.
-- =media-enabled-p= :: specifies whether to show media in sites. This can be overridden on a per-=router:route= basis later in the configuration.
-- =banner-p= :: if non-=nil=, displays a Nyxt internal page upon visiting blocked triggers.
-- =routes= :: list of =router:route='s. See the below documentation on how to build a =router:route= object.
+All routes derive from a =route= parent class that holds the shared settings. It includes the following slots:
 
-=router:route= slots include a mini-DSL that specifies what URL part to block, redirect or invoke externally via a comparison type. Personally, I believe this is a bit more straightforward than having to fiddle around with complex regular expressions and it allows you to define many site behaviors within a single point. The following is a detailed description of all the available slots. If this is not clear to you, feel free to skip to the next section, where many example routes are provided with their various forms.
+- =trigger= :: the trigger for =route= activation, akin to the predicates used in Nyxt =auto-rules=. One of =match-domain=, =match-host=, =match-regex=, =match-port=, or a user-defined function.
+- =instances= :: a custom function to compute a list of instances for the route. Each of these will be added along with its respective =trigger= to the route's triggers automatically. This is useful if a service provides an official endpoint where instances are stored.
+- =toplevel-p= (default: =t=) :: whether the =route= is meant to process only top-level requests.
 
-- =redirect= :: takes a URL host to redirect to as a string or as a =quri:uri= object. For more complex redirection logic, you can supply a =router:redirect= object (see its class definition for the available slots), an arbitrary function to compute a redirect host, or a cons of the form =(REDIRECT-URI . TYPES)=, where =TYPES= is a property list of the form =(TYPE . RULES)= that can currently only take =:path= for =TYPE=. =RULES= is an alist of the form =(REPLACEMENT-PATH . ORIGINAL-PATHS)=, where =ORIGINAL-PATHS= is a single string or list of paths of the original URL which will be redirected to =REPLACEMENT-PATH=. If you want to redirect all paths except =ORIGINAL-PATHS= to =REPLACEMENT-PATH=, prefix this list with =not=.
-- =blocklist= :: takes a =router:blocklist= object (see its class definition for the available slots), the value =t= to block the entire route, or a property list of blocking conditions in the form of =(TYPE VALUE)=, where =TYPE= can be one of =:path= or =:host=, and =VALUE= is either another property list of the form =(TYPE PATHNAMES)=, where =TYPE= is either =:starts=, =:ends=, or =:contains= to denote the URL comparison and =PATHNAMES= is a simple string or a list of URL pathnames to draw the comparison against. You can also pass an integer as =VALUE= to indicate the number of URL /sections/ (e.g. =https://example.com/section1/section2=) to block in case the blocking condition value is not known. If =PATHNAMES= is prefixed with =not=, all paths will be blocked except for the specified list.
-- =external= :: used to open resources externally. If it's a function, it takes a single parameter =REQUEST-DATA= and can invoke arbitrary Lisp forms within it. If provided as a string, it will run the specified command via =uiop:run-program= with the current URL as its argument in a =format=-like syntax.
-- =original= :: the route's original hostname, which can be used for storage purposes (bookmarks, history, etc.) so that the original URL is recorded instead of the redirect's URL.
-- =media-p= :: whether to show media in the resource or not. This is useful if you want to block all media via the =router:media-enabled-p= slot, but only override it for certain resources.
-- =instances= :: you can provide a custom function to compute a list of instances, which will be added to the route's triggers automatically. This is useful if a service provides an official endpoint where these are stored.
+The default settings for the above can be changed in whatever granularity level you desire.
+
+Due to the nature of WebkitGTK, click events are obscured, which means some requests might not get through, and =iframes= cannot be redirected. To alleviate this, you can control whether only top-level requests should be processed . For example, let's say you decide you want all requests to be processed, including non top-level ones, for all routes by default. You can do so by configuring the =route= user-class in your configuration.
+
+#+begin_src lisp
+(define-configuration router:route
+  ((router:toplevel-p nil)))
+#+end_src
+
+If you'd like to process non top-level requests only for =redirector= and =opener= routes by default, you can configure them to do so.
+
+#+begin_src lisp
+(define-configuration (router:redirector router:opener)
+  ((router:toplevel-p nil)))
+#+end_src
+
+Finally, if you'd like to process non top-level requests only for a given instance of a =redirector= class, add the corresponding slot on the =route= instantiation.
+
+#+begin_src lisp
+(make-instance 'router:redirector
+               :trigger (match-domain "example.org")
+               :redirect-url "acme.org"
+               :toplevel-p nil)
+#+end_src
+
+=redirector= is a general-purpose redirect =route= that takes the following direct slots:
+
+- =redirect-url= :: a string for a URL host to redirect to or a =quri:uri= object for a complete URL to redirect to. If =redirect-rule= is a PCRE, you can use this as the replacement string and include special sub-strings as those used in =ppcre:regex-replace= (e.g. =\N=, =\'=, =\`=, etc.).
+
+- =redirect-rule= :: a PCRE to match against the current URL or an association list of redirection rules for paths. If the latter, each entry is a cons of the form =REDIRECT-PATH . TRIGGER-PATHS=, where =TRIGGER-PATHS= is a list of paths from the trigger URL that will be redirected to =REDIRECT-PATH= in the =redirect-url= .  To redirect all paths except =TRIGGER-PATHS= to =REDIRECT-PATH=, prefix this list with =not=.
+
+- =original-url= :: takes either a string for the route's original host or a =quri:uri= object for the original complete URL. This is useful for storage purposes (bookmarks, history, etc.) so that the original URL is recorded instead of the redirect's URL.
+
+=blocker= is a general-purpose block =route= that takes the following direct slots:
+
+- =block-banner-p= (default: =t=) :: whether to display a block banner upon blocking the =route=.
+
+- =blocklist= :: A PCRE to match against the current URL, =t= to block the entire route, or a property list of blocking conditions in the form of =TYPE VALUE=, where =TYPE= is one of =:path= or =:host=.  =VALUE= is another plist of the form =PRED RULES=, where =PRED= is either =:starts=, =:ends=, or =:contains= and =RULES= is a list of strings to draw the comparison against according to the current =TYPE=.  If =RULES= is prefixed with =not=, the entire route will be blocked except for the specified =RULES=.
+
+  You can also pass an integer as =VALUE= to indicate the number of URL /sections/ (e.g. =https://example.com/<section1>/<section2>=) to block in case the blocking condition value is not known. Combined =RULES= (specified via =:or=) allow you to specify two or more predicates that you wish to draw the path comparison against, useful if you want to specify a more general block rule first and bypass it for certain scenarios.
+
+=opener= is a general-purpose resource-opener =route= that instructs resources to be opened externally. It takes the following direct slots:
+
+- =resource= :: a resource can be either a function form, in which case it takes a single parameter URL and can invoke arbitrary Lisp forms with it.  If it's a string, it runs the specified command via =uiop:run-program= with the current URL as argument, and can be given in a =format=-like syntax.
+
+=media-toggler= is a =route= that toggles the display status of media elements in the page. It takes the following direct slots:
+
+- =media-p= :: whether to display media in the =route=.
+
+As previously mentioned, =web-route= is a =route= that combines all of the aforementioned routes and takes all their slots. It's helpful when you want to invoke lots of behavior types inside a single =route=.
 
 ** Examples
-Set up all Instagram requests to redirect to the hostname =www.picuki.com= and additionally redirect all the paths that don't start with =/=, =/p/=, or =/tv/= to =/profile/= paths, and all paths that do start with =/p/= to =/media/=, as this is what the alternative front-end uses for its URL structure.
+Set up all Instagram requests to redirect to the hostname =www.picuki.com= and additionally redirect all the paths that don't start with =/=, =/p/=, or =/tv/= to =/profile/= paths, and all paths that do start with =/p/= to =/media/=. This goes in line with the URL structure that Picuki uses. Additionally, block all the paths that don't contain the sub-string =/video=.
 
 #+begin_src lisp
-(make-route (match-regex "https://(www.)?insta.*")
-            :redirect (make-instance
-                       'router:redirect
-                       :to "www.picuki.com"
-                       :rules '(("/profile/" . (not "/" "/p/" "/tv/"))
-                                ("/media/" . "/p/")))
-            :blocklist (make-instance
-                        'router:blocklist
-                        :rules '(:contains (not "/video"))))
+(make-instance 'router:web-route
+               :trigger (match-regex "https://(www.)?insta.*")
+               :redirect-url "www.picuki.com"
+               :redirect-rule '(("/profile/" . (not "/" "/p/" "/tv/"))
+                                ("/media/" . "/p/"))
+               :blocklist '(:path (:contains (not "/video"))))
   #+end_src
 
-Redirect all TikTok requests except the index and usernames to =/@placeholder/video/= since this is what [[https://github.com/pablouser1/ProxiTok][ProxiTok]] uses for its shared video links.
+Redirect all TikTok requests except the index path, videos, or usernames to =/@placeholder/video/=. This is what [[https://github.com/pablouser1/ProxiTok][ProxiTok]] uses to proxy TikTok shared links.
 
 #+begin_src lisp
-(make-route (match-domain "tiktok.com")
-            :redirect '("proxitok.herokuapp.com" .
-                        (:path (("/@placeholder/video/" . (not "/" "/@"))))))
+(make-instance 'router:redirector
+               :trigger (match-domain "tiktok.com")
+               :redirect-url "proxitok.herokuapp.com"
+               :redirect-rule '(("/@placeholder/video/" . (not "/" "/@" "/t"))))
   #+end_src
 
-The above uses the cons form of =:redirect= that can be argued to be terser, but you can re-write the redirect to use a =router:redirect= object if it seems clearer to you.
+Redirect all Reddit requests to your preferred [[https://codeberg.org/teddit/teddit][Teddit]] instance and additionally block all of the paths belonging to this route except those that contain the =/comments= sub-string. This would essentially limit you to only being able to access Teddit publications and not being able to access URL sections such as the main feed.
 
 #+begin_src lisp
-(make-route (match-domain "tiktok.com")
-            :redirect (make-instance
-                       'router:redirect
-                       :to "proxitok.herokuapp.com"
-                       :rules '(("/@placeholder/video/" . (not "/" "/@"))))
+(make-instance 'router:web-route
+               :trigger (match-domain "reddit.com")
+               :redirect-url "teddit.namazso.eu"
+               :original-url "www.reddit.com"
+               :blocklist '(:path (:contains (not "/comments"))))
   #+end_src
 
-Redirect all Reddit requests to the =teddit.namazso.eu= host and additionally block all of the paths belonging to this trigger except those that contain the =/comments= path. This would essentially limit the user to only being able to access Reddit publications instead of sections like its main feed.
-
-#+begin_src lisp
-(make-route (match-domain "reddit.com")
-            :redirect "teddit.namazso.eu"
-            :original "www.reddit.com"
-            :blocklist '(:path (:contains (not "/comments"))))
-  #+end_src
-
-You can pass an =:original= slot to the =route=, so that if you wrap Nyxt internal methods like shown below, history entries will get recorded with the original URL, meaning an inverse redirection will be applied to figure out the original URL structure.
+As shown above, you can pass an =:original-url= slot to the =redirector= route so that if you wrap Nyxt internal methods like shown below, history entries will get recorded with the original URL, meaning an inverse redirection will be applied to figure out the original URL structure.
 
 #+begin_src lisp
 (defmethod nyxt:on-signal-load-finished :around ((mode nyxt/history-mode:history-mode) url)
   (call-next-method mode (router:trace-url url)))
+#+end_src
+
+Use a =redirector= route with a regexp =:redirect-rule= to redirect all Fandom routes to your preferred [[https://breezewiki.com/][BreezeWiki]] instance.
+
+#+begin_src lisp
+(make-instance 'router:redirector
+               :trigger (match-regex "https://.*fandom.com/wiki/.*")
+               :redirect-rule  "https://(\\w+)\\.fandom.com/wiki/(.*)"
+               :redirect-url "https://breezewiki.com/\\1/wiki/\\2")
+#+end_src
+
+Match YouTube video URLs, videos hosted on its alternative front-ends such as [[https://invidious.io/][Invidious]], and MP3 files, redirecting all of these to =youtube.com=, and dispatching an =opener= route that invokes an external program with the matched URL, in this case launching an [[https://mpv.io/][mpv]] player IPC client process through [[https://github.com/kljohann/mpv.el][mpv.el]] to control the player from Emacs. You can also pass a one-placeholder format string such as =mpv --video=no ~a= to the =:resource= slot if you'd rather not use a Lisp form, where =~a= represents the matched URL. Note how a route's trigger can also consist of a list of predicates for which to match URLs, meaning that on the route below it will match either URLs that contain the video regexp or those that contain the =.mp3= file extension.
+
+#+begin_src lisp
+(make-instance 'router:web-route
+               :trigger '((match-regex ".*/watch\\?v=.*")
+                          (match-file-extension "mp3"))
+               :redirect-url "youtube.com"
+               :resource (lambda (url)
+                           (eval-in-emacs
+                            `(mpv-start ,url))))
   #+end_src
 
-Matches on YouTube video URLs, videos hosted on its alternative front-ends such as [[https://invidious.io/][Invidious]], as well as MP3 files, redirecting all of these requests to =youtube.com=, and dispatching a rule which invokes an external program with the current request data, in this case launching an [[https://mpv.io/][mpv]] player IPC client process through [[https://github.com/kljohann/mpv.el][mpv.el]] to control the player from Emacs. You could also pass a one-placeholder format string such as =mpv --video=no ~a= to the =:external= slot if you'd rather not use a Lisp form, where =~a= represents the current route URL. Note how a route's trigger can also consist of a /list/ of predicates for which to match URLs, which means on the route below, it will match either URLs that contain the video Regexp or URLs that contain the =.mp3= file extension.
-
-  #+begin_src lisp
-  (make-route '((match-regex ".*/watch\\?v=.*")
-                (match-file-extension "mp3"))
-              :redirect "youtube.com"
-              :external (lambda (data)
-                          (eval-in-emacs
-                           `(mpv-start
-                             ,(quri:render-uri (url data))))))
-  #+end_src
-
-The route below takes an =:instances= slot, which is a custom function like =make-invidious-instances= to be provided by the user that will compute a list of instances. This is useful if the service that is used as the =:redirect= slot offers a list of predefined instances, and these will also be added to the route's triggers on route instantiation. =:redirect= slots can also take an arbitrary function which will compute the redirect hostname to use.
+The route below takes an =:instances= slot, a custom function like =make-invidious-instances= that is provided by the user and computes a list of instances. This is useful if the service that hosts the URL provided by the =:redirect-url=  offers a list of predefined instances, and these will also be added to the route's =:trigger= on route instantiation. =:redirect-url= slots can also take an arbitrary function which will compute the redirect hostname to use.
 
 #+begin_src lisp
 (defun set-invidious-instance ()
@@ -158,68 +219,62 @@ The route below takes an =:instances= slot, which is a custom function like =mak
             (json:decode-json-from-string
              (dex:get "https://api.invidious.io/instances.json")))))
 
-(make-route (match-domain "youtube.com" "youtu.be")
-            :redirect 'set-invidious-instance
-            :instances 'make-invidious-instances
-            :blocklist '(:path (:starts "/c/")))
+(make-instance 'router:web-route
+               :trigger (match-domain "youtube.com" "youtu.be")
+               :blocklist '(:path (:starts "/c/"))
+               :redirect-url 'set-invidious-instance
+               :instances 'make-invidious-instances)
   #+end_src
 
-In case you'd like to specify a different URL scheme than HTTPS or a different port, you should supply a redirect in the form of a =quri:uri= object. For instance, the following sets up a route that redirects Google search results to a locally-running instance of [[https://github.com/benbusby/whoogle-search][Whoogle]], and where these will appear as if they were searched in Google.
+In case you'd like to specify a different URL scheme than HTTPS or a different port for =:redirect-url=, you should supply a redirect in the form of a =quri:uri= object. For instance, the following sets up a =redirector= route that redirects Google search results to a locally-running instance of [[https://github.com/benbusby/whoogle-search][Whoogle]], and where results will appear as if they were searched in Google.
 
 #+begin_src lisp
-(make-route (match-regex "https://whoogle.*"
-                         "https://.*google.com/search.*")
-            :original (quri:uri "https://www.google.com")
-            :redirect (quri:uri "http://localhost:5000"))
+(make-instance 'router:redirector
+               :trigger (match-regex "https://whoogle.*" "https://.*google.com/search.*")
+               :redirect-url (quri:uri "http://localhost:5000")
+               :original-url (quri:uri "https://www.google.com"))
   #+end_src
 
-If you'd like to randomize your redirect hostname, you can use a service like [[https://sr.ht/~benbusby/farside/][Farside]] by including the following route, which redirects all Twitter URLs to the respective Farside endpoint.
+If you'd like to randomize =:redirect-url= to a list of the healthiest instances, you can use a service like [[https://sr.ht/~benbusby/farside/][Farside]]. Then, include the following =redirector= route, which redirects all Twitter URLs to the corresponding Farside endpoint.
 
 #+begin_src lisp
-(make-route (match-domain "twitter.com")
-            :redirect (make-instance
-                       'router:redirect
-                       :to "farside.link"
-                       :rules '(("/nitter/" . "/"))))
+(make-instance 'router:redirector
+               :trigger (match-domain "twitter.com")
+               :redirect-url "farside.link"
+               :redirect-rule '(("/nitter/" . "/")))
+#+end_src
+
+The following showcases the use of a =blocker= route that prevents the user from accessing Amazon URLs unless their hostname begins with the =smile= sub-string.
+
+#+begin_src lisp
+(make-instances 'router:blocker
+                :trigger (match-domain "amazon.com")
+                :blocklist '(:host (:starts (not "smile"))))
   #+end_src
 
-Showcases the use of a hostname blocklist, in this case preventing the user from accessing Amazon URLs unless they start with the =smile= hostname.
+Use a =blocker= route to block certain paths of the =lemmy.ml= route. Namely, block paths that contain the =post= sub-string or paths that start with the =/u/= sub-string. This blocks all publications and user profiles on the site.
 
 #+begin_src lisp
-(make-route (match-domain "amazon.com")
-            :blocklist '(:host (:starts (not "smile"))))
+(make-instance 'router:blocker
+               :trigger (match-domain "lemmy.ml")
+               :blocklist '(:path (:contains "post" :starts "/u/")))
   #+end_src
 
-The above is the property list version of =:blocklist= that can be argued to be terser, but as shown in previous examples, we can rewrite it to use a =router:blocklist= object if it's clearer for us.
+Use a =blocker= route with a combined =:blocklist= path rule for =github.com= requests. Combined path rules (specified via =:or=) allow you to specify two or more predicates that you wish to draw the path comparison against. In the case below, an integer indicates we want to block paths that consist of a single path sub-section (e.g. =https://github.com/<sub-section>=), /or/ block all paths except those that contain the =pulls= or =search= sub-strings. This allows you to specify a more general block rule and bypass it for certain scenarios. In the case below, it blocks all single sub-section paths on =github.com= (such as profiles, the marketplace and so on) but at the same time allows you to use GitHub's search engine and see your listed pull requests.
 
 #+begin_src lisp
-(make-route (match-domain "amazon.com")
-            :blocklist (make-instance
-                        'router:blocklist
-                        :block-type :host
-                        :rules '(:starts (not "smile"))))
+(make-instance 'router:blocker
+               :trigger (match-domain "github.com")
+               :blocklist '(:path (:or 1 (:contains (not "pulls" "search")))))
   #+end_src
 
-Consists of a blocklist for certain paths of the =lemmy.ml= domain; namely, the blocked paths would be those that contain =post= on them or the ones that start with =/u/=, which would block all publications and user profiles on the site.
+To block one or more triggers, you can use a =blocker= route with a =:blocklist= set to =t=.
 
 #+begin_src lisp
-(make-route (match-domain "lemmy.ml")
-            :blocklist '(:path (:contains "post" :starts "/u/")))
-  #+end_src
-
-Provides a combined path rule for =github.com= requests. Combined rules (specified via =or=) in paths allow you to specify two or more predicates that you wish to draw the path comparison against. In this specific combination, the integer will first indicate that we want to block those paths that consist of a single sub-section (e.g. =https://github.com/profile_name=), /or/ block all paths except the ones which contain =pulls= or =search=. This essentially allows you to specify a more general block rule and bypass it for certain scenarios. In this case, it would block all single sub-section paths on =github.com= (such as profiles, the marketplace and so on) but at the same time allow you to use GitHub's search engine and see your listed pull requests.
-
-#+begin_src lisp
-(make-route (match-domain "github.com")
-            :blocklist '(:path (or 1 (:contains (not "pulls" "search")))))
-  #+end_src
-
-Serves as a general blocklist trigger. To block an entire URL predicate or list of predicates, you can simply pass =t= to the =blocklist= slot.
-
-#+begin_src lisp
-(make-route (match-domain "timewastingsite1.com"
-                          "timewastingsite2.com")
-            :blocklist t)
+(make-instance 'router:blocker
+               :trigger (match-domain "timewastingsite1.com"
+                                      "timewastingsite2.com")
+               :blocklist t)
   #+end_src
 
 ** Contributing
