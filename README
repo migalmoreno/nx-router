@@ -67,9 +67,9 @@ You must begin by customizing =router-mode=, a mode that takes all of the user r
                     :trigger (match-extension "mp3")
                     :resource "mpv --video=no ~a")
      (make-instance 'router:web-route
-                    :trigger (match-regex "https://stark.net/products/.*")
-                    :redirect-url (quri:uri "https://\\1.acme.org/\\2")
+                    :trigger (match-domain "stark.net")
                     :redirect-rule "https://stark.net/products/(\\w+)/(.*)"
+                    :redirect-url (quri:uri "https://\\1.acme.org/\\2")
                     :blocklist '(:path (:ends (not ".html")
                                         :contains "acme"))
                     :resource (lambda (url)
@@ -81,7 +81,7 @@ As you might notice from above, routes can go from really simple ones to ones wi
 
 All routes derive from a =route= parent class that holds the shared settings. It includes the following slots:
 
-- =trigger= :: the trigger for =route= activation, akin to the predicates used in Nyxt =auto-rules=. One of =match-domain=, =match-host=, =match-regex=, =match-port=, or a user-defined function.
+- =trigger= :: the trigger for =route= activation, akin to the predicates used in Nyxt =auto-rules=. One of =match-domain=, =match-host=, =match-regex=, =match-port=, a user-defined function, or a PCRE.
 - =instances= :: a custom function to compute a list of instances for the route. Each of these will be added along with its respective =trigger= to the route's triggers automatically. This is useful if a service provides an official endpoint where instances are stored.
 - =toplevel-p= (default: =t=) :: whether the =route= is meant to process only top-level requests.
 
@@ -112,7 +112,7 @@ Finally, if you'd like to process non top-level requests only for a given instan
 
 =redirector= is a general-purpose redirect =route= that takes the following direct slots:
 
-- =redirect-url= :: a string for a URL host to redirect to or a =quri:uri= object for a complete URL to redirect to. If =redirect-rule= is a PCRE, you can use this as the replacement string and include special sub-strings as those used in =ppcre:regex-replace= (e.g. =\N=, =\'=, =\`=, etc.).
+- =redirect-url= :: a string for a URL host to redirect to or a =quri:uri= object for a complete URL to redirect to. If =redirect-rule= or =trigger= is a PCRE, you can use this as the replacement string and include special sub-strings like those used in =ppcre:regex-replace= (e.g. =\N=, =\'=, =\`=, etc.).
 
 - =redirect-rule= :: a PCRE to match against the current URL or an association list of redirection rules for paths. If the latter, each entry is a cons of the form =REDIRECT-PATH . TRIGGER-PATHS=, where =TRIGGER-PATHS= is a list of paths from the trigger URL that will be redirected to =REDIRECT-PATH= in the =redirect-url= .  To redirect all paths except =TRIGGER-PATHS= to =REDIRECT-PATH=, prefix this list with =not=.
 
@@ -174,12 +174,11 @@ As shown above, you can pass an =:original-url= slot to the =redirector= route s
   (call-next-method mode (router:trace-url url)))
 #+end_src
 
-Use a =redirector= route with a regexp =:redirect-rule= to redirect all Fandom routes to your preferred [[https://breezewiki.com/][BreezeWiki]] instance.
+Use a =redirector= route with a PCRE trigger to redirect all Fandom routes to your preferred [[https://breezewiki.com/][BreezeWiki]] instance.
 
 #+begin_src lisp
 (make-instance 'router:redirector
-               :trigger (match-regex "https://.*fandom.com/wiki/.*")
-               :redirect-rule  "https://(\\w+)\\.fandom.com/wiki/(.*)"
+               :trigger "https://(\\w+)\\.fandom.com/wiki/(.*)"
                :redirect-url "https://breezewiki.com/\\1/wiki/\\2")
 #+end_src
 
