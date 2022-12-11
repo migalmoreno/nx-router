@@ -10,7 +10,7 @@
 (define-class route ()
   ((trigger
     '()
-    :type (or list function)
+    :type (or string list function)
     :documentation "Trigger(s) to determine if this `route' is to be activated.")
    (instances
     nil
@@ -137,8 +137,8 @@ in a web buffer."))
   (hooks:remove-hook (nyxt:request-resource-hook (buffer mode)) 'handle-routing))
 
 (defmethod initialize-instance :after ((route route) &key)
-  (nyxt:run-thread "Build list of instances"
-    (with-slots (instances trigger) route
+  (with-slots (instances trigger) route
+    (nyxt:run-thread "Set up trigger"
       (flet ((construct-predicates (sources)
                (mapcar (lambda (instance)
                          `(nyxt:match-host
@@ -158,12 +158,14 @@ in a web buffer."))
   "Find the matching routes from MODE's triggers for URL.
 Optionally, match against IN-REDIRECT."
   (flet ((triggers-match-p (triggers)
-           (some (lambda (predicate)
-                   (typecase predicate
+           (some (lambda (pred)
+                   (typecase pred
+                     (string
+                      (funcall (nyxt:match-regex pred) url))
                      (list
-                      (funcall (eval predicate) url))
+                      (funcall (eval pred) url))
                      (function
-                      (funcall predicate url))))
+                      (funcall pred url))))
                  triggers)))
     (remove-if-not
      (lambda (route)
@@ -178,6 +180,8 @@ Optionally, match against IN-REDIRECT."
                                ((or function symbol) (funcall redirect-url))))))
              route
              (cond
+               ((stringp trigger)
+                (funcall (nyxt:match-regex trigger) url))
                ((list-of-lists-p trigger)
                 (triggers-match-p trigger))
                ((listp trigger)
@@ -328,20 +332,26 @@ If REVERSE, reverse the redirect logic."
                     (alex:if-let ((port (quri:uri-port uri)))
                       (list :port port)
                       '())))))
-    (with-slots (original-url redirect-url redirect-rule) route
+    (with-slots (original-url redirect-url redirect-rule trigger) route
       (build-uri
        (let ((redirect-url
                (let ((redirect (etypecase redirect-url
                                  (quri:uri redirect-url)
                                  (string (quri:make-uri :host redirect-url))
                                  ((or function symbol) (quri:uri (funcall redirect-url))))))
-                 (typecase redirect-rule
-                   (string
-                    (ppcre:regex-replace redirect-rule (render-url url) (render-url redirect-url)))
-                   (list
-                    (quri:copy-uri url :host (quri:uri-host redirect)
-                                       :path (redirect-paths redirect-rule url :reverse reverse)))
-                   (otherwise redirect)))))
+                 (if (stringp trigger)
+                     (if (ppcre:scan trigger (render-url url))
+                         (ppcre:regex-replace trigger (render-url url) (render-url redirect-url))
+                         url)
+                     (typecase redirect-rule
+                       (string
+                        (if (ppcre:scan redirect-url (render-url url))
+                            (ppcre:regex-replace redirect-rule (render-url url) (render-url redirect-url))
+                            url))
+                       (list
+                        (quri:copy-uri url :host (quri:uri-host redirect)
+                                           :path (redirect-paths redirect-rule url :reverse reverse)))
+                       (otherwise redirect))))))
          (if (and reverse original-url)
              original-url
              redirect-url))))))
