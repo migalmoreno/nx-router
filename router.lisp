@@ -112,7 +112,8 @@ given in a `format'-like syntax."))
   (:export-accessor-names-p t)
   (:accessor-name-transformer (class*:make-name-transformer name))
   (:metaclass user-class)
-  (:documentation "`route' that combines many routes for behavior you might want to modify web buffer."))
+  (:documentation "`route' that combines many routes for behavior you might want to modify
+in a web buffer."))
 
 (define-mode router-mode ()
   "Apply a set of routes on the current browsing session."
@@ -190,13 +191,13 @@ Optionally, match against IN-REDIRECT."
 (export-always 'trace-url)
 (-> trace-url (quri:uri) t)
 (defun trace-url (url)
-  (alex:when-let* ((route (find-if (lambda (r)
-                                     (redirector-p r))
-                                   (find-matching-routes
-                                    url
-                                    (nyxt:find-submode
-                                     (nyxt:resolve-symbol :router-mode :mode '(:nx-router)))
-                                    :in-redirect t))))
+  (alex:if-let ((route (find-if (lambda (r)
+                                  (redirector-p r))
+                                (find-matching-routes
+                                 url
+                                 (nyxt:find-submode
+                                  (nyxt:resolve-symbol :router-mode :mode '(:nx-router)))
+                                 :in-redirect t))))
     (with-slots (redirect-url original-url) route
       (cond
         ((and route
@@ -207,7 +208,8 @@ Optionally, match against IN-REDIRECT."
                        (quri:uri-host url)))
          (compute-route route url :reverse t))
         ((and route original-url) (quri:copy-uri url :host original-url))
-        (t url)))))
+        (t url)))
+    url))
 
 (-> url-compare (quri:uri list &key (:type keyword) (:eq-fn keyword) (:value boolean)) t)
 (defun url-compare (url url-parts &key (type :path) (eq-fn :starts) value)
