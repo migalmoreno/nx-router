@@ -1,90 +1,123 @@
-(in-package #:cl-user)
-(uiop:define-package #:nx-router/tests
-  (:use #:cl #:lisp-unit2)
-  (:import-from :nx-router))
-
 (in-package #:nx-router/tests)
 (nyxt:use-nyxt-package-nicknames)
-
-(defmethod asdf:perform ((op asdf:test-op) (c (eql (asdf:find-system :nx-router))))
-  (asdf:oos 'asdf:load-op :nx-router/tests)
-  (let ((*package* (find-package :nx-router/tests)))
-    (uiop:symbol-call :lisp-unit2 :run-tests
-                      :package :nx-router/tests
-                      :name :nx-router
-                      :run-context (find-symbol "WITH-SUMMARY-CONTEXT" :lisp-unit2))))
 
 (defvar *url* "https://example.org/")
 
 (defparameter *redirector-with-list-rule*
   (make-instance 'router:redirector
-                 :trigger (nyxt:match-domain *url*)
+                 :trigger (match-domain *url*)
                  :redirect-url "atlas.engineer"
-                 :redirect-rule '(("/about/" . (not "/" "/v/"))
-                                  ("/contact" . "/c/"))))
+                 :redirect-rule '(("/community/" . "/c/")
+                                  ("/about/" . (not "/" "/v/")))))
+
+(defparameter *redirector-with-regexp-trigger*
+  (make-instance 'router:redirector
+                 :trigger "https://(\\w+)\\.atlas.engineer/(.*)"
+                 :redirect-url "https://atlas.engineer/\\1/\\2"))
 
 (defparameter *redirector-with-regexp-rule*
   (make-instance 'router:redirector
-                 :trigger (nyxt:match-domain *url*)
+                 :trigger (match-domain *url*)
                  :redirect-url "https://atlas.engineer/\\1/\\2"
                  :redirect-rule "https://(\\w+)\\.atlas.engineer/(.*)"))
 
+(defparameter *redirector-with-nonstandard-port-and-scheme*
+  (make-instance 'router:redirector
+                 :trigger (match-domain *url*)
+                 :redirect-url (quri:uri "http://atlas.engineer:8080")))
+
 (defparameter *blocker-with-list-blocklist*
   (make-instance 'router:blocker
-                 :trigger (nyxt:match-domain *url*)
-                 :blocklist '(:path (:contains ("work"))
-                              :host (:starts ("/nyxt")))))
+                 :trigger (match-domain *url*)
+                 :blocklist '(:path (:starts "/about" :ends "/work")
+                              :host (:starts "nyxt" :contains "atlas"))))
+
+(defparameter *blocker-with-list-blocklist-or-rules*
+  (make-instance 'router:blocker
+                 :trigger (match-domain *url*)
+                 :blocklist '(:or
+                              (:path (:or (:starts "/about") (:ends "/work")))
+                              (:host (:or (:starts "nyxt") (:contains "atlas"))))))
 
 (defparameter *blocker-with-regexp-blocklist*
   (make-instance 'router:blocker
-                 :trigger (nyxt:match-domain *url*)
-                 :blocklist "(^/nyxt)|work"))
+                 :trigger (match-domain *url*)
+                 :blocklist "/(^nyxt)|work"))
 
 (define-test redirector-with-list-rule ()
   (assert-equality #'quri:uri=
                    (quri:uri "https://atlas.engineer/")
                    (nx-router::compute-route *redirector-with-list-rule* (quri:uri *url*)))
   (assert-equality #'quri:uri=
-                   (quri:uri"https://atlas.engineer/articles")
+                   (quri:uri "https://atlas.engineer/")
                    (nx-router::compute-route *redirector-with-list-rule*
-                                             (quri:make-uri :defaults *url* :path "/articles")))
+                                             (quri:make-uri :defaults *url* :path "/")))
   (assert-equality #'quri:uri=
-                   (quri:uri "https://atlas.engineer/about")
+                   (quri:uri "https://atlas.engineer/about/example")
                    (nx-router::compute-route *redirector-with-list-rule*
                                              (quri:make-uri :defaults *url* :path "/example")))
   (assert-equality #'quri:uri=
-                   (quri:uri "https://atlas.engineer/contact/1234")
+                   (quri:uri "https://atlas.engineer/community/1234")
                    (nx-router::compute-route *redirector-with-list-rule*
                                              (quri:make-uri :defaults *url* :path "/c/1234")))
   (assert-equality #'quri:uri=
-                   (quri:uri "http://atlas.engineer/v/1234")
+                   (quri:uri "https://atlas.engineer/v/1234")
                    (nx-router::compute-route *redirector-with-list-rule*
                                              (quri:make-uri :defaults *url* :path "/v/1234"))))
 
+(define-test redirector-with-nonstandard-port-and-schema ()
+  (assert-equality #'quri:uri=
+                   (quri:uri "http://atlas.engineer:8080/articles")
+                   (nx-router::compute-route *redirector-with-nonstandard-port-and-scheme*
+                                             (quri:make-uri :defaults *url* :path "/articles"))))
+
+(define-test redirector-with-regexp-trigger ()
+  (assert-equality #'quri:uri=
+                   (quri:uri "https://atlas.engineer/nyxt/contact")
+                   (nx-router::compute-route *redirector-with-regexp-trigger*
+                                             (quri:make-uri :defaults *url*
+                                                            :host "nyxt.atlas.engineer"
+                                                            :path "/contact"))))
+
 (define-test redirector-with-regexp-rule ()
   (assert-equality #'quri:uri=
-                   (quri:uri "https://atlas.engineer/nyxt")
+                   (quri:uri "https://atlas.engineer/nyxt/contact")
                    (nx-router::compute-route *redirector-with-regexp-rule*
                                              (quri:make-uri :defaults *url*
                                                             :host "nyxt.atlas.engineer"
                                                             :path "/contact"))))
 
 (define-test blocker-with-list-rule ()
-  (assert-true (nx-router::compute-route *blocker-with-list-blocklist*
-                                         (quri:make-uri :defaults *url*
-                                                        :path "/work")))
-  (assert-true (nx-router::compute-route *blocker-with-list-blocklist*
-                                         (quri:make-uri :defaults *url*
-                                                        :path "/nyxt")))
   (assert-false (nx-router::compute-route *blocker-with-list-blocklist*
                                           (quri:make-uri :defaults *url*
-                                                         :path "/contact"))))
+                                                         :path "/about/work")))
+  (assert-false (nx-router::compute-route *blocker-with-list-blocklist*
+                                          (quri:make-uri :defaults *url*
+                                                         :host "nyxt.atlas.engineer")))
+  (assert-true (nx-router::compute-route *blocker-with-list-blocklist*
+                                         (quri:make-uri :defaults *url*
+                                                        :host "nyxt.atlas.engineer"
+                                                        :path "/about/work"))))
+
+(define-test blocker-with-list-rule-or-rules ()
+  (assert-true (nx-router::compute-route *blocker-with-list-blocklist-or-rules*
+                                          (quri:make-uri :defaults *url*
+                                                         :path "/about/work")))
+  (assert-true (nx-router::compute-route *blocker-with-list-blocklist-or-rules*
+                                         (quri:make-uri :defaults *url*
+                                                        :host "nyxt.atlas.engineer")))
+  (assert-true (nx-router::compute-route *blocker-with-list-blocklist-or-rules*
+                                         (quri:make-uri :defaults *url*
+                                                        :host "nyxt.atlas.engineer"
+                                                        :path "/about/work")))
+  (assert-false (nx-router::compute-route *blocker-with-list-blocklist-or-rules*
+                                          (quri:make-uri :defaults *url*))))
 
 (define-test blocker-with-regexp-rule ()
   (assert-true (nx-router::compute-route *blocker-with-regexp-blocklist*
                                          (quri:make-uri :defaults *url*
                                                         :path "/work")))
-  (assert-true (nx-router::compute-route *blocker-with-regexp-blocklist*
+  (assert-false (nx-router::compute-route *blocker-with-regexp-blocklist*
                                          (quri:make-uri :defaults *url*
                                                         :path "/nyxt")))
   (assert-false (nx-router::compute-route *blocker-with-regexp-blocklist*
