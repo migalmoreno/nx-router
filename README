@@ -1,7 +1,7 @@
 # -*- mode: org; org-html-head-include-default-style: nil; org-html-postamble: nil; -*-
 #+OPTIONS: toc:nil
 * nx-router
-=nx-router= is a URL routing extension for [[https://nyxt.atlas.engineer/][Nyxt]]. In short, it's an abstraction around the idea of Nyxt handlers, and introduces the concept of =route= objects a user can consume with a set of predefined slots. It's built to be composable by allowing you to combine many routes together and extensible by making it really easy to define new routes.
+=nx-router= is a URL routing extension for [[https://nyxt.atlas.engineer/][Nyxt]]. In short, it's an abstraction around the idea of Nyxt request resource handlers, and introduces the concept of =route= objects a user can consume with a set of predefined slots. It's built to be composable by allowing you to combine many routes together and extensible by making it really easy to define new routes.
 
 Over time, I found the built-in functionality in Nyxt for resource handling becomes difficult to maintain and reason about. I started by using plain handlers to achieve some of the functionality I needed, but became frustrated with the amount of duplicate logic I found myself writing and the fact I had to come up with everything by myself when I wanted more complex logic.
 
