@@ -28,6 +28,15 @@ useful if a service provides an official endpoint where these are stored.")
   (:documentation "Extensible handler with predefined slots that allow end-users to customize
 its behavior."))
 
+(defun maybe-list-of-routes-p (list)
+  "Return t if LIST is null or a list of `route' objects."
+  (or (null list)
+      (and (consp list)
+           (every #'route-p list))))
+
+(deftype maybe-list-of-routes ()
+  `(satisfies maybe-list-of-routes-p))
+
 (define-class blocker (route)
   ((block-banner-p
     t
@@ -153,10 +162,24 @@ in a web buffer."))
              (setf (trigger route) (append trigger (construct-predicates sources))))
             (t (setf (trigger route) (cons trigger (construct-predicates sources))))))))))
 
-(-> find-matching-route (quri:uri router-mode &key (:in-redirect boolean)) (or route null))
-(defun find-matching-routes (url mode &key in-redirect)
-  "Find the matching routes from MODE's triggers for URL.
-Optionally, match against IN-REDIRECT."
+(-> match-by-redirect (quri:uri router-mode) maybe-list-of-routes)
+(defun match-by-redirect (url mode)
+  "Match MODE routes by route redirect against URL."
+  (remove-if-not
+   (lambda (route)
+     (when (and (redirector-p route)
+                (with-slots (redirect-url) route
+                  (string= (quri:uri-host url)
+                           (etypecase redirect-url
+                             (string redirect-url)
+                             (quri:uri (quri:uri-host redirect-url))
+                             ((or function symbol) (funcall redirect-url))))))
+       route))
+   (routes mode)))
+
+(-> match-by-trigger (quri:uri router-mode) maybe-list-of-routes)
+(defun match-by-trigger (url mode)
+  "Match MODE routes by route trigger against URL."
   (flet ((triggers-match-p (triggers)
            (some (lambda (pred)
                    (typecase pred
@@ -170,26 +193,17 @@ Optionally, match against IN-REDIRECT."
     (remove-if-not
      (lambda (route)
        (with-slots (trigger) route
-         (if (and in-redirect
-                  (redirector-p route)
-                  (with-slots (redirect-url) route
-                    (string= (quri:uri-host url)
-                             (etypecase redirect-url
-                               (string redirect-url)
-                               (quri:uri (quri:uri-host redirect-url))
-                               ((or function symbol) (funcall redirect-url))))))
-             route
-             (cond
-               ((stringp trigger)
-                (funcall (nyxt:match-regex trigger) url))
-               ((list-of-lists-p trigger)
-                (triggers-match-p trigger))
-               ((listp trigger)
-                (if (instances route)
-                    (triggers-match-p trigger)
-                    (funcall (eval trigger) url)))
-               ((functionp trigger)
-                (funcall trigger url))))))
+         (cond
+           ((stringp trigger)
+            (funcall (nyxt:match-regex trigger) url))
+           ((list-of-lists-p trigger)
+            (triggers-match-p trigger))
+           ((listp trigger)
+            (if (instances route)
+                (triggers-match-p trigger)
+                (funcall (eval trigger) url)))
+           ((functionp trigger)
+            (funcall trigger url)))))
      (routes mode))))
 
 (export-always 'trace-url)
@@ -197,11 +211,10 @@ Optionally, match against IN-REDIRECT."
 (defun trace-url (url)
   (alex:if-let ((route (find-if (lambda (r)
                                   (redirector-p r))
-                                (find-matching-routes
+                                (match-by-redirect
                                  url
                                  (nyxt:find-submode
-                                  (nyxt:resolve-symbol :router-mode :mode '(:nx-router)))
-                                 :in-redirect t))))
+                                  (nyxt:resolve-symbol :router-mode :mode '(:nx-router)))))))
     (with-slots (redirect-url original-url) route
       (cond
         ((and route
@@ -462,7 +475,7 @@ If REVERSE, reverse the redirect logic."
 (defmethod route-handler (request-data (mode router-mode))
   "Handle routes from MODE to dispatch with REQUEST-DATA."
   (when request-data
-    (alex:if-let ((routes (find-matching-routes (url request-data) mode)))
+    (alex:if-let ((routes (match-by-trigger (url request-data) mode)))
       (progn
         (when (nyxt:request-resource-hook (buffer mode))
           (dolist (route routes)
