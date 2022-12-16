@@ -346,25 +346,28 @@ If REVERSE, reverse the redirect logic."
                       (list :port port)
                       '())))))
     (with-slots (original-url redirect-url redirect-rule trigger) route
-      (build-uri
-       (let ((redirect-url
-               (let ((redirect (etypecase redirect-url
-                                 (quri:uri redirect-url)
-                                 (string (quri:make-uri :host redirect-url))
-                                 ((or function symbol) (quri:uri (funcall redirect-url))))))
-                 (if (stringp trigger)
-                     (if (ppcre:scan trigger (render-url url))
-                         (ppcre:regex-replace trigger (render-url url) (render-url redirect-url))
-                         url)
-                     (typecase redirect-rule
-                       (string
-                        (if (ppcre:scan redirect-url (render-url url))
-                            (ppcre:regex-replace redirect-rule (render-url url) (render-url redirect-url))
-                            url))
-                       (list
-                        (quri:copy-uri url :host (quri:uri-host redirect)
-                                           :path (redirect-paths redirect-rule url :reverse reverse)))
-                       (otherwise redirect))))))
+      (let ((redirect-url
+              (let ((redirect (etypecase redirect-url
+                                (quri:uri redirect-url)
+                                (string (quri:make-uri :host redirect-url))
+                                ((or function symbol) (quri:uri (funcall redirect-url))))))
+                (if (stringp trigger)
+                    (if (ppcre:scan trigger (render-url url))
+                        (ppcre:regex-replace trigger (render-url url) (render-url redirect-url))
+                        url)
+                    (if redirect-rule
+                        (typecase redirect-rule
+                          (string
+                           (if (ppcre:scan redirect-rule (render-url url))
+                               (ppcre:regex-replace redirect-rule (render-url url) (render-url redirect-url))
+                               url)
+                           (ppcre:regex-replace redirect-rule (render-url url) (render-url redirect-url)))
+                          (list
+                           (quri:copy-uri url :host (quri:uri-host redirect)
+                                              :path (redirect-paths redirect-rule url :reverse reverse)))
+                          (otherwise redirect))
+                        redirect)))))
+        (build-uri
          (if (and reverse original-url)
              original-url
              redirect-url))))))
