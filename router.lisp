@@ -312,7 +312,7 @@ If REVERSE, reverse the redirect logic."
                       (integer (= (length (str:split-omit-nulls "/" (quri:uri-path url)))
                                   clause)))
                       into clauses
-                    finally (return (not (some #'null clauses))))
+                    finally (return (notevery #'null clauses)))
               (block-rules-p paths url :path)))
     (integer (= (length (str:split-omit-nulls "/" (quri:uri-path url))) paths))))
 
@@ -324,14 +324,14 @@ If REVERSE, reverse the redirect logic."
               (loop for clause in (rest hosts)
                     collect (block-rules-p clause url :host)
                       into clauses
-                    finally (return (not (some #'null clauses))))
+                    finally (return (notevery #'null clauses)))
               (block-rules-p hosts url :host)))))
 
 (defgeneric compute-route (route url &key &allow-other-keys)
   (:documentation "Compute ROUTE with URL."))
 
 (defmethod compute-route ((route redirector) url &key reverse)
-  "Transform URL based on the provided ROUTE.
+  "Redirect URL based on the provided ROUTE.
 If REVERSE, reverse the redirect logic."
   (flet ((build-uri (uri)
            (let ((uri (quri:uri uri)))
@@ -374,12 +374,24 @@ If REVERSE, reverse the redirect logic."
   (with-slots (blocklist) route
     (typecase blocklist
       (string
-       (ppcre:scan blocklist (render-url url)))
+       (not (null (ppcre:scan blocklist (render-url url)))))
       (list
-       (loop for (type rules) on blocklist by #'cddr while rules
-             return (case type
-                      (:path (block-paths-p rules url))
-                      (:host (block-hosts-p rules url)))))
+       (if (equal (first blocklist) :or)
+           (loop for blocklist-type in (rest blocklist)
+                 collect (loop for (type rules) on blocklist-type by #'cddr while rules
+                               collect (case type
+                                         (:path (block-paths-p rules url))
+                                         (:host (block-hosts-p rules url)))
+                                 into clauses
+                               finally (return (not (some #'null clauses))))
+                   into clauses
+                 finally (return (notevery #'null clauses)))
+           (loop for (type rules) on blocklist by #'cddr while rules
+                 collect (case type
+                           (:path (block-paths-p rules url))
+                           (:host (block-hosts-p rules url)))
+                   into clauses
+                 finally (return (not (some #'null clauses))))))
       (otherwise t))))
 
 (defmethod compute-route ((route opener) url &key)
