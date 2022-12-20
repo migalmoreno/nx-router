@@ -72,8 +72,8 @@ Each entry is a cons of the form REDIRECT-PATH . TRIGGER-PATHS, where TRIGGER-PA
 of paths of the trigger URL that will be redirected to REDIRECT-PATH.  To redirect all paths except
 TRIGGER-PATHS to REDIRECT-PATH, prefix this list with `not'.")
    (redirect-url
-    ""
-    :type (or string quri:uri function symbol)
+    nil
+    :type (or null string quri:uri function symbol)
     :documentation "The URL to redirect to.")
    (original-url
     nil
@@ -169,11 +169,12 @@ in a web buffer."))
    (lambda (route)
      (when (and (redirector-p route)
                 (with-slots (redirect-url) route
-                  (string= (quri:uri-host url)
-                           (etypecase redirect-url
-                             (string redirect-url)
-                             (quri:uri (quri:uri-host redirect-url))
-                             ((or function symbol) (funcall redirect-url))))))
+                  (and redirect-url
+                       (string= (quri:uri-host url)
+                                (etypecase redirect-url
+                                  (string redirect-url)
+                                  (quri:uri (quri:uri-host redirect-url))
+                                  ((or function symbol) (funcall redirect-url)))))))
        route))
    (routes mode)))
 
