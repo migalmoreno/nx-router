@@ -178,7 +178,7 @@ Use a =redirector= route with a PCRE trigger to redirect all Fandom routes to yo
 
 #+begin_src lisp
 (make-instance 'router:redirector
-               :trigger "https://(\\w+)\\.fandom.com/wiki/(.*)"
+               :trigger "https://([\\w'-]+)\\.fandom.com/wiki/(.*)"
                :redirect-url "https://breezewiki.com/\\1/wiki/\\2")
 #+end_src
 
