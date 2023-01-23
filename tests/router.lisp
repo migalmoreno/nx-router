@@ -65,7 +65,7 @@
                    (nx-router::compute-route *redirector-with-list-rule*
                                              (quri:make-uri :defaults *url* :path "/v/1234"))))
 
-(define-test redirector-with-nonstandard-port-and-schema ()
+(define-test redirector-with-nonstandard-port-and-scheme ()
   (assert-equality #'quri:uri=
                    (quri:uri "http://atlas.engineer:8080/articles")
                    (nx-router::compute-route *redirector-with-nonstandard-port-and-scheme*
