@@ -215,7 +215,7 @@ in a web buffer."))
                                 (match-by-redirect
                                  url
                                  (nyxt:find-submode
-                                  (nyxt:resolve-symbol :router-mode :mode '(:nx-router)))))))
+                                  (sym:resolve-symbol :router-mode :mode '(:nx-router)))))))
     (with-slots (redirect-url original-url) route
       (cond
         ((and route
