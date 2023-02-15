@@ -1,5 +1,5 @@
 # -*- mode: org; org-html-head-include-default-style: nil; org-html-postamble: nil; -*-
-#+OPTIONS: toc:nil
+#+OPTIONS: toc:nil num:nil
 * nx-router
 =nx-router= is a URL routing extension for [[https://nyxt.atlas.engineer/][Nyxt]]. In short, it's an abstraction around Nyxt request resource handlers that introduces the concept of =route= objects.
 
