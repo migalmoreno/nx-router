@@ -412,22 +412,22 @@ If REVERSE, reverse the redirect logic."
     (buffer "*Blocked Site*" 'nyxt:base-mode)
   "Show blocked internal page for URL."
   (let ((blocked-style (theme:themed-css (nyxt:theme nyxt:*browser*)
-                         (body
-                          :padding 0
-                          :margin 0)
-                         (.container
-                          :display "flex"
-                          :height "100vh"
-                          :justify-content "center"
-                          :align-items "center"
-                          :flex-direction "column")
-                         ("#banner"
-                          :display "flex"
-                          :justify-content "center"
-                          :flex-direction "column"
-                          :width "70vw")
-                         ("#url"
-                          :text-decoration "underline"))))
+                         `(body
+                           :padding 0
+                           :margin 0)
+                         `(.container
+                           :display "flex"
+                           :height "100vh"
+                           :justify-content "center"
+                           :align-items "center"
+                           :flex-direction "column")
+                         `("#banner"
+                           :display "flex"
+                           :justify-content "center"
+                           :flex-direction "column"
+                           :width "70vw")
+                         `("#url"
+                           :text-decoration "underline"))))
     (spinneret:with-html-string
       (:style blocked-style)
       (:div :class "container"
