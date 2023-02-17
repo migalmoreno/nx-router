@@ -62,7 +62,14 @@ You must begin by customizing =router-mode=, a mode that takes all of the user r
                     :blocklist t)
      (make-instance 'router:media-toggler
                     :trigger (match-url "https://gekko.com/gallery")
-                    :media-p nil)
+                    :instances-builder
+                    (make-instance
+                     'router:instances-builder
+                     :source "https://gekko.com/instances.json"
+                     :builder (lambda (instances)
+                                (json:decode-json-from-string
+                                 instances))
+                    :media-p nil))
      (make-instance 'router:opener
                     :trigger (match-extension "mp3")
                     :resource "mpv --video=no ~a")
@@ -82,7 +89,7 @@ As you might notice from above, routes can go from really simple ones to ones wi
 All routes derive from a =route= parent class that holds the shared settings. It includes the following slots:
 
 - =trigger= :: the trigger for =route= activation, akin to the predicates used in Nyxt =auto-rules=. One of =match-domain=, =match-host=, =match-regex=, =match-port=, a user-defined function, or a PCRE.
-- =instances= :: a custom function to compute a list of instances for the route. Each of these will be added along with its respective =trigger= to the route's triggers automatically. This is useful if a service provides an official endpoint where instances are stored.
+- =instances-builder= :: this takes an =instances-builder= object, which in turn takes a source to retrieve instances from and a builder which assembles them into a list.
 - =toplevel-p= (default: =t=) :: whether the =route= is meant to process only top-level requests.
 
 The default settings for the above can be changed in whatever granularity level you desire.
@@ -194,7 +201,7 @@ Match YouTube video URLs, videos hosted on its alternative front-ends such as [[
                             `(mpv-start ,url))))
   #+end_src
 
-The route below takes an =:instances= slot, a custom function like =make-invidious-instances= that is provided by the user and computes a list of instances. This is useful if the service that hosts the URL provided by the =:redirect-url=  offers a list of predefined instances, and these will also be added to the route's =:trigger= on route instantiation. =:redirect-url= slots can also take an arbitrary function which will compute the redirect hostname to use.
+The route below provides an =:instances-builder= slot, an =instances-builder= object that can be customized by the user to generate a list of instances. This is only useful if the service provider of =:redirect-url=  hosts an external endpoint where these are stored. Instances be added to the route's =:trigger= on route instantiation. =:redirect-url= slots can also take an arbitrary function which will compute the redirect hostname to use. See [[file:instances.lisp][instances.lisp]] for a few predefined builders for some common alternative front-end providers.
 
 #+begin_src lisp
 (defun set-invidious-instance ()
@@ -202,27 +209,34 @@ The route below takes an =:instances= slot, a custom function like =make-invidio
   (let ((instances
           (remove-if-not
            (lambda (instance)
-             (and (string= (alex:assoc-value (second instance) :region)
+             (and (string= (alex:assoc-value (second instance)
+                                             :region)
                            "DE")
-                  (string= (alex:assoc-value (second instance) :type)
+                  (string= (alex:assoc-value (second instance)
+                                             :type)
                            "https")))
            (json:with-decoder-simple-list-semantics
              (json:decode-json-from-string
-              (dex:get "https://api.invidious.io/instances.json"))))))
+              (dex:get
+               "https://api.invidious.io/instances.json"))))))
     (first (car instances))))
-
-(defun make-invidious-instances ()
-  "Return a list of Invidious instances."
-  (mapcar 'first
-          (json:with-decoder-simple-list-semantics
-            (json:decode-json-from-string
-             (dex:get "https://api.invidious.io/instances.json")))))
 
 (make-instance 'router:web-route
                :trigger (match-domain "youtube.com" "youtu.be")
                :blocklist '(:path (:starts "/c/"))
                :redirect-url 'set-invidious-instance
-               :instances 'make-invidious-instances)
+               :instances-builder
+               ;; or router:invidious-instances-builder
+               (make-instance
+                'instances-builder
+                :source "https://api.invidious.io/instances.json"
+                :builder
+                (lambda (instances)
+                  (mapcar
+                   'first
+                   (json:with-decoder-simple-list-semantics
+                     (json:decode-json-from-string
+                      instances))))))
   #+end_src
 
 In case you'd like to specify a different URL scheme than HTTPS or a different port for =:redirect-url=, you should supply a redirect in the form of a =quri:uri= object. For instance, the following sets up a =redirector= route that redirects Google search results to a locally-running instance of [[https://github.com/benbusby/whoogle-search][Whoogle]], and where results will appear as if they were searched in Google.
