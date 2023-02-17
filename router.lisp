@@ -1,7 +1,7 @@
 (in-package #:nx-router)
 (nyxt:use-nyxt-package-nicknames)
 
-(-> list-of-lists-p ((or function list)) boolean)
+(-> list-of-lists-p (t) boolean)
 (defun list-of-lists-p (object)
   "Return non-nil of OBJECT is a list of lists."
   (and (listp object)
