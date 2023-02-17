@@ -11,7 +11,9 @@
                 #:current-buffer
                 #:url
                 #:buffer
-                #:render-url)
+                #:render-url
+                #:list-of
+                #:maybe)
   (:import-from #:serapeum
                 #:->
                 #:export-always)
