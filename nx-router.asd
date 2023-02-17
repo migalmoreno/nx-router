@@ -6,6 +6,7 @@
   :serial t
   :depends-on ("nyxt")
   :components ((:file "package")
+               (:file "instances")
                (:file "router"))
   :in-order-to ((test-op (test-op "nx-router/tests"))))
 

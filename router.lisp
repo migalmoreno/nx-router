@@ -11,12 +11,13 @@
   ((trigger
     '()
     :type (or string list function)
-    :documentation "Trigger(s) to determine if this `route' is to be activated.")
-   (instances
+    :documentation "Trigger(s) to determine if `route' is to be activated.")
+   (instances-builder
     nil
-    :type (or null function)
-    :documentation "A function to compute a list of instances to add to `:trigger',
-useful if a service provides an official endpoint where these are stored.")
+    :type (maybe (list-of instances-builder))
+    :documentation "An `instances-builder' object that holds the necessary setup
+to build a list of instances for a service provider.  These will be added to
+the route's `:trigger'.")
    (toplevel-p
     t
     :type boolean
@@ -152,8 +153,8 @@ want to modify in a web buffer."))
                      'handle-routing))
 
 (defmethod initialize-instance :after ((route route) &key)
-  (with-slots (instances trigger) route
-    (nyxt:run-thread "Set up trigger"
+  (with-slots (instances-builder trigger) route
+    (nyxt:run-thread "nx-router trigger build"
       (flet ((construct-predicates (sources)
                (mapcar (lambda (instance)
                          `(nyxt:match-host
@@ -213,7 +214,7 @@ want to modify in a web buffer."))
            ((list-of-lists-p trigger)
             (triggers-match-p trigger))
            ((listp trigger)
-            (if (instances route)
+            (if (instances-builder route)
                 (triggers-match-p trigger)
                 (funcall (eval trigger) url)))
            ((functionp trigger)
