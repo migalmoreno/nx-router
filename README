@@ -201,7 +201,7 @@ Match YouTube video URLs, videos hosted on its alternative front-ends such as [[
                             `(mpv-start ,url))))
   #+end_src
 
-The route below provides an =:instances-builder= slot, an =instances-builder= object that can be customized by the user to generate a list of instances. This is only useful if the service provider of =:redirect-url=  hosts an external endpoint where these are stored. Instances be added to the route's =:trigger= on route instantiation. =:redirect-url= slots can also take an arbitrary function which will compute the redirect hostname to use. See [[file:instances.lisp][instances.lisp]] for a few predefined builders for some common alternative front-end providers.
+The route below provides an =:instances-builder= slot, which takes an =instances-builder= object that can be customized by the user to generate a list of instances. This is only useful if the service provider of =:redirect-url=  hosts an external endpoint where these are stored. Instances will be added to the route's =:trigger= on route instantiation. =:redirect-url= slots can also take an arbitrary function which will compute the redirect hostname to use. See [[file:instances.lisp][instances.lisp]] for a few predefined builders for common alternative front-end providers.
 
 #+begin_src lisp
 (defun set-invidious-instance ()
