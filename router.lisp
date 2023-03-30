@@ -439,7 +439,7 @@ If REVERSE, reverse the redirect logic."
        (uiop:run-program (format nil resource (quri:render-uri url))))
       ((or function symbol)
        (nyxt:run-thread "Spawn external rules"
-         (funcall resource url)))))
+         (funcall resource (quri:render-uri url))))))
   nil)
 
 (nyxt::define-internal-page-command-global display-blocked-page (&key url)
