@@ -291,4 +291,4 @@ To block one or more triggers, you can use a =blocker= route with a =:blocklist=
   #+end_src
 
 ** Contributing
-You can use the project's [[https://lists.sr.ht/~conses/nx-router][mailing list]] to send feedback, patches or open discussions. Bugs should be reported on the project's [[https://todo.sr.ht/~conses/nx-router][bug-tracker]].
+You can use the project's [[https://lists.sr.ht/~mmoreno/nx-router][mailing list]] to send feedback, patches or open discussions. Bugs should be reported on the project's [[https://todo.sr.ht/~mmoreno/nx-router][bug-tracker]].
