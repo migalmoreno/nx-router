@@ -381,19 +381,15 @@ If REVERSE, reverse the redirect logic."
                 (if (stringp trigger)
                     (if (ppcre:scan trigger (render-url url))
                         (ppcre:regex-replace
-                         trigger (render-url url) (render-url redirect-url))
+                         trigger (render-url url) redirect-url)
                         url)
                     (if redirect-rule
                         (typecase redirect-rule
                           (string
                            (if (ppcre:scan redirect-rule (render-url url))
                                (ppcre:regex-replace
-                                redirect-rule (render-url url)
-                                (render-url redirect-url))
-                               url)
-                           (ppcre:regex-replace
-                            redirect-rule (render-url url)
-                            (render-url redirect-url)))
+                                redirect-rule (render-url url) redirect-url)
+                               url))
                           (list
                            (quri:copy-uri
                             url :host (quri:uri-host redirect)
