@@ -447,18 +447,22 @@ If REVERSE, reverse the redirect logic."
                            :padding 0
                            :margin 0)
                          `(.container
-                           :display "flex"
-                           :height "100vh"
-                           :justify-content "center"
-                           :align-items "center"
-                           :flex-direction "column")
-                         `("#banner"
-                           :display "flex"
-                           :justify-content "center"
-                           :flex-direction "column"
-                           :width "70vw")
-                         `("#url"
-                           :text-decoration "underline"))))
+                           :display flex
+                           :height 100vh
+                           :justify-content center
+                           :align-items center
+                           :flex-direction column
+                           :text-align center)
+                         `(|#banner|
+                           :display flex
+                           :justify-content center
+                           :flex-direction column
+                           :width 70vw)
+                         `(|#url|
+                           :text-decoration none
+                           :font-weight bold
+                           :color ,theme:accent
+                           :pointer-events none))))
     (spinneret:with-html-string
       (:style blocked-style)
       (:div :class "container"
@@ -466,7 +470,7 @@ If REVERSE, reverse the redirect logic."
             (:div :id "banner"
                   (:h1 "The page you're trying to access has been blocked.")
                   (when url
-                    (:a :id "url" :href url url)))))))
+                    (:a :id "url" url)))))))
 
 (defgeneric dispatch-route (request-data route)
   (:documentation "Dispatch ROUTE with REQUEST-DATA."))
