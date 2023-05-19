@@ -430,12 +430,13 @@ If REVERSE, reverse the redirect logic."
 
 (defmethod compute-route ((route opener) url &key)
   (with-slots (resource) route
-    (typecase resource
-      (string
-       (uiop:run-program (format nil resource (quri:render-uri url))))
-      ((or function symbol)
-       (nyxt:run-thread "Spawn external rules"
-         (funcall resource (quri:render-uri url))))))
+    (let ((url (quri:url-decode (quri:render-uri url))))
+      (typecase resource
+        (string
+         (uiop:run-program (format nil resource url)))
+        ((or function symbol)
+         (nyxt:run-thread "Spawn external rules"
+           (funcall resource url))))))
   nil)
 
 (nyxt::define-internal-page-command-global display-blocked-page (&key url)
