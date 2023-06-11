@@ -119,13 +119,26 @@ the current URL as argument, and can be given in a `format'-like syntax."))
    (nyxt:glyph "⚑")))
 
 (defmethod nyxt:enable ((mode router-mode) &key)
-  "Initialize `router-mode' to enable routes."
-  (hooks:add-hook (nyxt:request-resource-hook (buffer mode))
-                  (make-instance
-                   'hooks:handler
-                   :fn (lambda (request-data)
-                         (route-handler request-data mode))
-                   :name 'handle-routing)))
+  (with-slots (routers buffer) mode
+    (setf routers
+          (reverse
+           (reduce
+            (lambda (acc router)
+              (alex:if-let ((base (find (name router) acc :key #'name)))
+                (progn
+                  (dolist (slot (set-difference
+                                 (mopu:slot-names (class-of base))
+                                 (mopu:direct-slot-names (class-of base))))
+                    (setf (slot-value router slot) (slot-value base slot)))
+                  (cons router acc))
+                (cons router acc)))
+            routers
+            :initial-value '())))
+    (hooks:add-hook (nyxt:request-resource-hook buffer)
+                    (make-instance 'hooks:handler
+                                   :fn (lambda (request-data)
+                                         (router-handler request-data mode))
+                                   :name 'handle-routing))))
 
 (defmethod nyxt:disable ((mode router-mode) &key)
   (hooks:remove-hook (nyxt:request-resource-hook (buffer mode))
