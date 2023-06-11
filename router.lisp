@@ -108,27 +108,6 @@ the current URL as argument, and can be given in a `format'-like syntax."))
   (:metaclass user-class)
   (:documentation "`route' that instructs resources to be opened externally."))
 
-(define-class media-toggler (route)
-  ((media-p
-    t
-    :type boolean
-    :documentation "Whether to display media in the route."))
-  (:export-class-name-p t)
-  (:export-slot-names-p t)
-  (:export-accessor-names-p t)
-  (:accessor-name-transformer (class*:make-name-transformer name))
-  (:metaclass user-class)
-  (:documentation "`route' that toggles the state of media display."))
-
-(define-class web-route (redirector blocker opener media-toggler)
-  ()
-  (:export-class-name-p t)
-  (:export-slot-names-p t)
-  (:export-accessor-names-p t)
-  (:accessor-name-transformer (class*:make-name-transformer name))
-  (:metaclass user-class)
-  (:documentation "`route' that combines many routes for behavior you might
-want to modify in a web buffer."))
 
 (define-mode router-mode ()
   "Apply a set of routes on the current browsing session."
@@ -502,35 +481,7 @@ If REVERSE, reverse the redirect logic."
     (when (nyxt:toplevel-p request-data)
       (nyxt::buffer-delete (buffer request-data)))))
 
-(defmethod dispatch-route (request-data (route media-toggler))
   (when request-data
-    (flet ((set-media-state (state req)
-             (setf (nyxt:ffi-buffer-auto-load-image-enabled-p (buffer req))
-                   state)
-             (setf (nyxt:ffi-buffer-media-enabled-p (buffer req)) state)))
-      (set-media-state (media-p route) request-data))
-    request-data))
-
-(defmethod dispatch-route (request-data (route web-route))
-  (with-slots (redirect-url original-url redirect-rule
-               blocklist resource media-p)
-      route
-    (when (or original-url redirect-url redirect-rule)
-      (dispatch-route
-       request-data (make-instance 'redirector
-                                   :original-url original-url
-                                   :redirect-url redirect-url
-                                   :redirect-rule redirect-rule)))
-    (when blocklist
-      (dispatch-route
-       request-data (make-instance 'blocker :blocklist blocklist)))
-    (when media-p
-      (dispatch-route
-       request-data (make-instance 'media-toggler :media-p media-p)))
-    (when resource
-      (dispatch-route
-       request-data (make-instance 'opener :resource resource)))))
-
 (defmethod route-handler (request-data (mode router-mode))
   "Handle routes from MODE to dispatch with REQUEST-DATA."
   (when request-data
