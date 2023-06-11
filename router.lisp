@@ -7,41 +7,44 @@
   (and (listp object)
        (every #'listp object)))
 
-(define-class route ()
-  ((trigger
-    '()
-    :type (or string list function)
-    :documentation "Trigger(s) to determine if `route' is to be activated.")
+(define-class router ()
+  ((name
+    nil
+    :type (or null symbol))
+   (route
+    nil
+    :type (or null string list function)
+    :documentation "Route(s) to determine if `router' is to be activated.")
    (instances-builder
     nil
     :type (maybe (list-of instances-builder))
     :documentation "An `instances-builder' object that holds the necessary setup
 to build a list of instances for a service provider.  These will be added to
-the route's `:trigger'.")
+the router's `route'.")
    (toplevel-p
     t
     :type boolean
-    :documentation "Whether `route' should process only top-level requests."))
+    :documentation "Whether `router' should process only top-level requests."))
   (:export-class-name-p t)
   (:export-slot-names-p t)
   (:export-accessor-names-p t)
   (:accessor-name-transformer (class*:make-name-transformer name))
   (:documentation "Customizable request resource handler for routing."))
 
-(defun maybe-list-of-routes-p (list)
-  "Return t if LIST is null or a list of `route' objects."
+(defun maybe-list-of-routers-p (list)
+  "Return t if LIST is null or a list of `router' objects."
   (or (null list)
       (and (consp list)
-           (every #'route-p list))))
+           (every #'router-p list))))
 
-(deftype maybe-list-of-routes ()
-  `(satisfies maybe-list-of-routes-p))
+(deftype maybe-list-of-routers ()
+  `(satisfies maybe-list-of-routers-p))
 
-(define-class blocker (route)
+(define-class blocker (router)
   ((block-banner-p
     t
     :type boolean
-    :documentation "Whether to display a block banner upon blocking the `route'.")
+    :documentation "Whether to display a block banner upon blocking the `router'.")
    (blocklist
     nil
     :type (or boolean string list)
@@ -64,18 +67,17 @@ certain scenarios."))
   (:export-accessor-names-p t)
   (:accessor-name-transformer (class*:make-name-transformer name))
   (:metaclass user-class)
-  (:documentation "General-purpose `route' to determine what to block."))
+  (:documentation "General-purpose `router' to determine what to block."))
 
-(define-class redirector (route)
+(define-class redirector (router)
   ((redirect-rule
     nil
     :type (or null string list)
     :documentation "A PCRE to match against the current URL or an alist of
 redirection rules for paths.
-Each entry is a cons of the form REDIRECT-PATH . TRIGGER-PATHS, where
-TRIGGER-PATHS is a list of paths of the trigger URL that will be redirected
-to REDIRECT-PATH.  To redirect all paths except TRIGGER-PATHS to REDIRECT-PATH,
-prefix this list with `not'.")
+Each entry is a cons of the form REDIRECT . ROUTES, where
+ROUTES is a list of paths that will be redirected to REDIRECT.
+To redirect all paths except ROUTES to REDIRECT, prefix this list with `not'.")
    (redirect-url
     nil
     :type (or null string quri:uri function symbol)
@@ -91,9 +93,9 @@ redirect."))
   (:export-accessor-names-p t)
   (:accessor-name-transformer (class*:make-name-transformer name))
   (:metaclass user-class)
-  (:documentation "General-purpose redirect `route'."))
+  (:documentation "General-purpose redirect `router'."))
 
-(define-class opener (route)
+(define-class opener (router)
   ((resource
     nil
     :type (or null string function symbol)
@@ -106,15 +108,14 @@ the current URL as argument, and can be given in a `format'-like syntax."))
   (:export-accessor-names-p t)
   (:accessor-name-transformer (class*:make-name-transformer name))
   (:metaclass user-class)
-  (:documentation "`route' that instructs resources to be opened externally."))
-
+  (:documentation "`router' that instructs resources to be opened externally."))
 
 (define-mode router-mode ()
-  "Apply a set of routes on the current browsing session."
-  ((routes
+  "Apply a set of routers on the current browsing session."
+  ((routers
     '()
     :type list
-    :documentation "List of routes to be matched against the current buffer.")
+    :documentation "List of `router's to be matched against the current buffer.")
    (nyxt:glyph "⚑")))
 
 (defmethod nyxt:enable ((mode router-mode) &key)
@@ -127,13 +128,12 @@ the current URL as argument, and can be given in a `format'-like syntax."))
                    :name 'handle-routing)))
 
 (defmethod nyxt:disable ((mode router-mode) &key)
-  "Clean up `router-mode', removing the existing routes."
   (hooks:remove-hook (nyxt:request-resource-hook (buffer mode))
                      'handle-routing))
 
-(defmethod initialize-instance :after ((route route) &key)
-  (with-slots (instances-builder trigger) route
-    (nyxt:run-thread "nx-router trigger build"
+(defmethod initialize-instance :after ((router router) &key)
+  (with-slots (instances-builder route) router
+    (nyxt:run-thread "nx-router build routes"
       (flet ((construct-predicates (sources)
                (mapcar (lambda (instance)
                          `(nyxt:match-host
@@ -148,19 +148,19 @@ the current URL as argument, and can be given in a `format'-like syntax."))
         (alex:when-let ((instances (and instances-builder
                                         (build-instances instances-builder))))
           (cond
-            ((list-of-lists-p trigger)
-             (setf (trigger route)
-                   (append trigger (construct-predicates instances))))
-            (t (setf (trigger route)
-                     (cons trigger (construct-predicates instances))))))))))
+            ((list-of-lists-p route)
+             (setf (route router)
+                   (append route (construct-predicates instances))))
+            (t (setf (route router)
+                     (cons route (construct-predicates instances))))))))))
 
-(-> match-by-redirect (quri:uri router-mode) maybe-list-of-routes)
+(-> match-by-redirect (quri:uri router-mode) maybe-list-of-routers)
 (defun match-by-redirect (url mode)
   "Match MODE routes by route redirect against URL."
   (remove-if-not
-   (lambda (route)
-     (when (and (redirector-p route)
-                (with-slots (redirect-url) route
+   (lambda (router)
+     (when (and (redirector-p router)
+                (with-slots (redirect-url) router
                   (and redirect-url
                        (string= (quri:uri-host url)
                                 (etypecase redirect-url
@@ -168,13 +168,13 @@ the current URL as argument, and can be given in a `format'-like syntax."))
                                   (quri:uri (quri:uri-host redirect-url))
                                   ((or function symbol)
                                    (funcall redirect-url)))))))
-       route))
-   (routes mode)))
+       router))
+   (routers mode)))
 
-(-> match-by-trigger (quri:uri router-mode) maybe-list-of-routes)
-(defun match-by-trigger (url mode)
-  "Match MODE routes by route trigger against URL."
-  (flet ((triggers-match-p (triggers)
+(-> match-by-route (quri:uri router-mode) maybe-list-of-routers)
+(defun match-by-route (url mode)
+  "Match MODE routers by route against URL."
+  (flet ((routes-match-p (routes)
            (some (lambda (pred)
                    (typecase pred
                      (string
@@ -183,43 +183,43 @@ the current URL as argument, and can be given in a `format'-like syntax."))
                       (funcall (eval pred) url))
                      (function
                       (funcall pred url))))
-                 triggers)))
+                 routes)))
     (remove-if-not
-     (lambda (route)
-       (with-slots (trigger) route
+     (lambda (router)
+       (with-slots (route) router
          (cond
-           ((stringp trigger)
-            (funcall (nyxt:match-regex trigger) url))
-           ((list-of-lists-p trigger)
-            (triggers-match-p trigger))
-           ((listp trigger)
-            (if (instances-builder route)
-                (triggers-match-p trigger)
-                (funcall (eval trigger) url)))
-           ((functionp trigger)
-            (funcall trigger url)))))
-     (routes mode))))
+           ((stringp route)
+            (funcall (nyxt:match-regex route) url))
+           ((list-of-lists-p route)
+            (routes-match-p route))
+           ((listp route)
+            (if (instances-builder router)
+                (routes-match-p route)
+                (funcall (eval route) url)))
+           ((functionp route)
+            (funcall route url)))))
+     (routers mode))))
 
 (export-always 'trace-url)
 (-> trace-url (quri:uri) t)
 (defun trace-url (url)
-  (alex:if-let ((route (find-if (lambda (r)
-                                  (redirector-p r))
-                                (match-by-redirect
-                                 url
-                                 (nyxt:find-submode
-                                  (sym:resolve-symbol :router-mode :mode
-                                                      '(:nx-router)))))))
-    (with-slots (redirect-url original-url) route
+  (alex:if-let ((router (find-if (lambda (r)
+                                   (redirector-p r))
+                                 (match-by-redirect
+                                  url
+                                  (nyxt:find-submode
+                                   (sym:resolve-symbol :router-mode :mode
+                                                       '(:nx-router)))))))
+    (with-slots (redirect-url original-url) router
       (cond
-        ((and route
+        ((and router
               (string= (etypecase redirect-url
                          (string redirect-url)
                          (quri:uri (quri:uri-host redirect-url))
                          ((or function symbol) (funcall redirect-url)))
                        (quri:uri-host url)))
-         (compute-route route url :reverse t))
-        ((and route original-url) (quri:copy-uri url :host original-url))
+         (compute-router router url :reverse t))
+        ((and router original-url) (quri:copy-uri url :host original-url))
         (t url)))
     url))
 
@@ -332,12 +332,9 @@ If REVERSE, reverse the redirect logic."
                     finally (return (notevery #'null clauses)))
               (block-rules-p hosts url :host)))))
 
-(defgeneric compute-route (route url &key &allow-other-keys)
-  (:documentation "Compute ROUTE with URL."))
+(defgeneric compute-router (router url &key &allow-other-keys))
 
-(defmethod compute-route ((route redirector) url &key reverse)
-  "Redirect URL based on the provided ROUTE.
-If REVERSE, reverse the redirect logic."
+(defmethod compute-router ((router redirector) url &key reverse)
   (flet ((build-uri (uri)
            (let ((uri (quri:uri uri)))
              (apply #'quri:make-uri
@@ -350,17 +347,17 @@ If REVERSE, reverse the redirect logic."
                     (alex:if-let ((port (quri:uri-port uri)))
                       (list :port port)
                       '())))))
-    (with-slots (original-url redirect-url redirect-rule trigger) route
+    (with-slots (original-url redirect-url redirect-rule route) router
       (let ((redirect-url
               (let ((redirect (etypecase redirect-url
                                 (quri:uri redirect-url)
                                 (string (quri:make-uri :host redirect-url))
                                 ((or function symbol)
                                  (quri:uri (funcall redirect-url))))))
-                (if (stringp trigger)
-                    (if (ppcre:scan trigger (render-url url))
+                (if (stringp route)
+                    (if (ppcre:scan route (render-url url))
                         (ppcre:regex-replace
-                         trigger (render-url url) redirect-url)
+                         route (render-url url) redirect-url)
                         url)
                     (if redirect-rule
                         (typecase redirect-rule
@@ -381,9 +378,8 @@ If REVERSE, reverse the redirect logic."
              original-url
              redirect-url))))))
 
-(defmethod compute-route ((route blocker) url &key)
-  "Determine whether URL should be blocked according to ROUTE."
-  (with-slots (blocklist) route
+(defmethod compute-router ((router blocker) url &key)
+  (with-slots (blocklist) router
     (typecase blocklist
       (string
        (not (null (ppcre:scan blocklist (render-url url)))))
@@ -407,8 +403,8 @@ If REVERSE, reverse the redirect logic."
                  finally (return (not (some #'null clauses))))))
       (otherwise t))))
 
-(defmethod compute-route ((route opener) url &key)
-  (with-slots (resource) route
+(defmethod compute-router ((router opener) url &key)
+  (with-slots (resource) router
     (let ((url (quri:url-decode (quri:render-uri url))))
       (typecase resource
         (string
@@ -451,22 +447,21 @@ If REVERSE, reverse the redirect logic."
                   (when url
                     (:a :id "url" url)))))))
 
-(defgeneric dispatch-route (request-data route)
-  (:documentation "Dispatch ROUTE with REQUEST-DATA."))
+(defgeneric dispatch-router (request-data router))
 
-(defmethod dispatch-route (request-data (route redirector))
+(defmethod dispatch-router (request-data (router redirector))
   (let ((url (and request-data (url request-data))))
-    (when (and url (or (nyxt:toplevel-p request-data) (not (toplevel-p route))))
-      (let ((redirect-url (compute-route route url)))
+    (when (and url (or (nyxt:toplevel-p request-data) (not (toplevel-p router))))
+      (let ((redirect-url (compute-router router url)))
         (setf (url request-data) redirect-url))))
   request-data)
 
-(defmethod dispatch-route (request-data (route blocker))
+(defmethod dispatch-router (request-data (router blocker))
   (let ((url (and request-data (url request-data))))
-    (if (and url (or (nyxt:toplevel-p request-data) (not (toplevel-p route))))
-        (if (compute-route route url)
+    (if (and url (or (nyxt:toplevel-p request-data) (not (toplevel-p router))))
+        (if (compute-router router url)
             (progn
-              (and (block-banner-p route)
+              (and (block-banner-p router)
                    (nyxt:buffer-load (nyxt:nyxt-url 'display-blocked-page
                                                     :url (render-url url))
                                      :buffer (buffer request-data)))
@@ -474,21 +469,20 @@ If REVERSE, reverse the redirect logic."
             request-data)
         request-data)))
 
-(defmethod dispatch-route (request-data (route opener))
+(defmethod dispatch-router (request-data (router opener))
   (let ((url (and request-data (url request-data))))
-    (when (and url (or (nyxt:toplevel-p request-data) (not (toplevel-p route))))
-      (compute-route route url))
+    (when (and url
+               (or (nyxt:toplevel-p request-data) (not (toplevel-p router))))
+      (compute-router router url))
     (when (nyxt:toplevel-p request-data)
       (nyxt::buffer-delete (buffer request-data)))))
 
+(defmethod router-handler (request-data (mode router-mode))
   (when request-data
-(defmethod route-handler (request-data (mode router-mode))
-  "Handle routes from MODE to dispatch with REQUEST-DATA."
-  (when request-data
-    (alex:if-let ((routes (match-by-trigger (url request-data) mode)))
+    (alex:if-let ((routers (match-by-route (url request-data) mode)))
       (progn
         (when (nyxt:request-resource-hook (buffer mode))
-          (dolist (route routes)
-            (setf request-data (dispatch-route request-data route))))
+          (dolist (router routers)
+            (setf request-data (dispatch-router request-data router))))
         request-data)
       request-data)))
