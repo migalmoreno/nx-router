@@ -2,7 +2,7 @@
 
 # nx-router
 
-`nx-router` is a URL routing extension for [Nyxt](https://nyxt.atlas.engineer/). In short, it's an abstraction around Nyxt resource handlers that uses `router` objects to make it more convenient to handle routes. See [Examples](#orgc88d3b8) for a walk-through on how to set up routers.  
+`nx-router` is a URL routing extension for [Nyxt](https://nyxt.atlas.engineer/). In short, it's an abstraction around Nyxt resource handlers that uses `router` objects to make it more convenient to handle routes. See [Examples](#org80788cc) for a walk-through on how to set up routers.  
 
 The main drive behind `nx-router` was I initially found built-in handlers difficult to reason and I soon became frustrated with the amount of duplicate logic I had to maintain. `nx-router` tries to tackle common needs in resource handling with a redirector, a site blocker, and a resource opener. You can think of it as a more batteries-included `url-dispatching-handler`.  
 
@@ -100,7 +100,7 @@ Finally, if you'd like to process non top-level requests only for a given instan
 
 -   **`redirect-rule`:** a PCRE to match against the current URL or an association list of redirection rules for paths. If the latter, each entry is a cons of the form `REDIRECT . ROUTES`, where `ROUTES` is a list of paths from the `route` that will be redirected to `REDIRECT` in `redirect-url`. To redirect all paths except `ROUTES` to `REDIRECT`, prefix this list with `not`.
 
--   **`original-url`:** takes either a string for the router>'s original host or a `quri:uri` object for the original complete URL. This is useful for storage purposes (bookmarks, history, etc.) so that the original URL is recorded instead of the redirect's URL.
+-   **`original-url`:** takes either a string for the router's original host or a `quri:uri` object for the original complete URL. This is useful for storage purposes (bookmarks, history, etc.) so that the original URL is recorded instead of the redirect's URL.
 
 `blocker` is a blocking router that takes the following direct slots:  
 
