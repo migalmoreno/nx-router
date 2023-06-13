@@ -10,7 +10,7 @@
                  :redirect-rule '(("/community/" . "/c/")
                                   ("/about/" . (not "/" "/v/")))))
 
-(defparameter *redirector-with-regexp-trigger*
+(defparameter *redirector-with-regexp-route*
   (make-instance 'router:redirector
                  :route "https://(\\w+)\\.atlas.engineer/(.*)"
                  :redirect-url "https://atlas.engineer/\\1/\\2"))
@@ -71,10 +71,10 @@
                    (nx-router::compute-router *redirector-with-nonstandard-port-and-scheme*
                                              (quri:make-uri :defaults *url* :path "/articles"))))
 
-(define-test redirector-with-regexp-trigger ()
+(define-test redirector-with-regexp-route ()
   (assert-equality #'quri:uri=
                    (quri:uri "https://atlas.engineer/nyxt/contact")
-                   (nx-router::compute-router *redirector-with-regexp-trigger*
+                   (nx-router::compute-router *redirector-with-regexp-route*
                                              (quri:make-uri :defaults *url*
                                                             :host "nyxt.atlas.engineer"
                                                             :path "/contact"))))
