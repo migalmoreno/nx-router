@@ -11,7 +11,6 @@
   (:export-class-name-p t)
   (:export-slot-names-p t)
   (:export-accessor-names-p t)
-  (:accessor-name-transformer (class*:make-name-transformer name))
   (:documentation "An instances builder for an alternative front-end."))
 
 (export-always 'libredirect-instances-source)
