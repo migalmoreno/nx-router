@@ -2,7 +2,7 @@
 
 # nx-router
 
-`nx-router` is a URL routing extension for [Nyxt](https://nyxt.atlas.engineer/). In short, it's an abstraction around Nyxt resource handlers that uses `router` objects to make it more convenient to handle routes. See [Examples](#org80788cc) for a walk-through on how to set up routers.  
+`nx-router` is a URL routing extension for [Nyxt](https://nyxt.atlas.engineer/). In short, it's an abstraction around Nyxt resource handlers that uses `router` objects to make it more convenient to handle routes. See [Examples](#org729b2ad) for a walk-through on how to set up routers.  
 
 The main drive behind `nx-router` was I initially found built-in handlers difficult to reason and I soon became frustrated with the amount of duplicate logic I had to maintain. `nx-router` tries to tackle common needs in resource handling with a redirector, a site blocker, and a resource opener. You can think of it as a more batteries-included `url-dispatching-handler`.  
 
@@ -13,7 +13,7 @@ The main drive behind `nx-router` was I initially found built-in handlers diffic
 
 To install the extension, you need to download the source and place it in Nyxt's extensions path, given by the value of `nyxt-source-registry` (by default `~/.local/share/nyxt/extensions`).  
 
-    git clone https://git.mianmoreno.com/nx-router ~/.local/share/nyxt/extensions/nx-router
+    git clone https://github.com/migalmoreno/nx-router ~/.local/share/nyxt/extensions/nx-router
 
 The extension works with **Nyxt 3 onward** but it's encouraged to use it with the latest version of Nyxt master for the time being.  
 
@@ -215,5 +215,5 @@ Use a router with a combined `blocklist` path rule for <https://github.com>. The
 
 ## Contributing
 
-You can send feedback, patches, or bug reports to [public@mianmoreno.com](mailto:public@mianmoreno.com).  
+Feel free to open an issue with bug reports or feature requests. PRs are more than welcome too.  
 
