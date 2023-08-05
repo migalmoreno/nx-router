@@ -384,9 +384,9 @@ with KEY."
 
 (defmethod dispatch-router (request-data (router redirector))
   (let ((url (and request-data (url request-data))))
-    (when (and url (or (nyxt:toplevel-p request-data) (not (toplevel-p router))))
-      (let ((redirect-url (compute-router router url)))
-        (setf (url request-data) redirect-url))))
+    (when (and url (or (nyxt:toplevel-p request-data)
+                       (not (toplevel-p router))))
+      (setf (url request-data) (compute-router router url))))
   request-data)
 
 (defmethod dispatch-router (request-data (router blocker))
@@ -395,17 +395,18 @@ with KEY."
         (if (compute-router router url)
             (progn
               (and (block-banner-p router)
-                   (nyxt:buffer-load (nyxt:nyxt-url 'display-blocked-page
-                                                    :url (render-url url))
-                                     :buffer (buffer request-data)))
+                   (nyxt:buffer-load
+                    (nyxt:nyxt-url 'display-blocked-page
+                                   :url (render-url url))
+                    :buffer (buffer request-data)))
               nil)
             request-data)
         request-data)))
 
 (defmethod dispatch-router (request-data (router opener))
   (let ((url (and request-data (url request-data))))
-    (when (and url
-               (or (nyxt:toplevel-p request-data) (not (toplevel-p router))))
+    (when (and url (or (nyxt:toplevel-p request-data)
+                       (not (toplevel-p router))))
       (compute-router router url))
     (when (nyxt:toplevel-p request-data)
       (nyxt::buffer-delete (buffer request-data)))))
