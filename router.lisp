@@ -115,14 +115,13 @@ the current URL as argument, and can be given in a `format'-like syntax."))
           (reverse
            (reduce
             (lambda (acc router)
-              (alex:if-let ((base (find (name router) acc :key #'name)))
-                (progn
+              (when (name router)
+                (let ((base (find (name router) acc :key #'name)))
                   (dolist (slot (set-difference
                                  (mopu:slot-names (class-of base))
                                  (mopu:direct-slot-names (class-of base))))
-                    (setf (slot-value router slot) (slot-value base slot)))
-                  (cons router acc))
-                (cons router acc)))
+                    (setf (slot-value router slot) (slot-value base slot)))))
+              (cons router acc))
             routers
             :initial-value '())))
     (hooks:add-hook (nyxt:request-resource-hook buffer)
