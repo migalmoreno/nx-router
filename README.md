@@ -2,11 +2,11 @@
 
 # nx-router
 
-`nx-router` is a URL routing extension for [Nyxt](https://nyxt.atlas.engineer/). In short, it's an abstraction around Nyxt resource handlers that uses `router` objects to make it more convenient to handle routes. See [Examples](#org729b2ad) for a walk-through on how to set up routers.  
+`nx-router` is a declarative URL routing extension for [Nyxt](https://nyxt.atlas.engineer/). In short, it's an abstraction around Nyxt request resource handlers that uses `router` objects to make it more convenient to handle routes. See [Examples](#org967ab09) for a walk-through on how to set up routers.  
 
-The main drive behind `nx-router` was I initially found built-in handlers difficult to reason and I soon became frustrated with the amount of duplicate logic I had to maintain. `nx-router` tries to tackle common needs in resource handling with a redirector, a site blocker, and a resource opener. You can think of it as a more batteries-included `url-dispatching-handler`.  
+The main drive behind `nx-router` was I initially found built-in handlers difficult to reason and I soon became frustrated how much imperative logic I had to maintain. `nx-router` aims to simplify resource handling in Nyxt with declarative redirects, blockers, and resource handlers. You may think of it as a more batteries-included `url-dispatching-handler`.  
 
-[nx-freestance-handler](https://github.com/kssytsrk/nx-freestance-handler) is a similar extension that redirects popular sites to privacy-friendly front-ends. However, this has the limitation that it only works with a few sites and makes you  reliant on its maintainer updating the extension to add new handlers or modify existing ones.  
+[nx-freestance-handler](https://github.com/kssytsrk/nx-freestance-handler) is a similar extension that provides handlers for popular privacy-friendly front-ends. However, this has the limitation that it only works with a few sites and makes you  reliant on its maintainer updating the extension to add new handlers or modify existing ones.  
 
 
 ## Installation
@@ -48,31 +48,31 @@ This shows some example routers you'd set up inside the `router-mode` configurat
         (list
          (make-instance 'router:redirector
                         :route (match-domain "example.org")
-                        :redirect-url "acme.org"
-                        :redirect-rule '(("/example" . (not "/" "/wiki"))))
+                        :redirect
+                        '(("https://acme.org/example" . (not ".*/$" ".*/wiki$"))))
          (make-instance 'router:blocker
                         :name 'wonka
                         :route (match-hostname "www.wonka.inc")
                         :instances-builder
-                        (make-instance
-                         'router:instances-builder
-                         :source "https://www.wonka.inc/instances.json"
-                         :builder (lambda (instances)
-                                    (json:decode-json-from-string
-                                     instances)))
+                        (make-instance 'router:instances-builder
+                                       :source "https://www.wonka.inc/instances.json"
+                                       :builder (lambda (instances)
+                                                  (json:decode-json-from-string
+                                                   instances)))
                         :blocklist "/factory")
          (make-instance 'router:opener
                         :name 'wonka
                         :resource "mpv --video=no ~a")
          (make-instance 'router:redirector
                         :name 'wonka
-                        :redirect-rule "https://stark.net/products/(\\w+)/(.*)"
-                        :redirect-url (quri:uri "https://\\1.acme.org/\\2"))))))
+                        :redirect
+                        '(("https://\\1.acme.org/\\2" . ".*/p/(\\w+)/(.*)")))))))
 
 The first router simply redirects all requests that match the domain <https://example.org> to <https://acme.org>, and adds a redirect rule so that any path of <https://example.org> that doesn't match `/` or `/wiki` will get redirected to <https://acme.org/example>. The second router sets a blocklist for the `/factory` PCRE, and the rest of the routers are a composition of the second router, so they inherit its settings.  
 
 All routers derive from a `router` parent class that holds common router settings:  
 
+-   **`name`:** a symbol for the name of the router which allows for router composition.
 -   **`route`:** the route to match for `router` activation, akin to the predicates used in Nyxt `auto-rules`. One of `match-domain`, `match-host`, `match-regex`, `match-port`, a user-defined function, or a PCRE.
 -   **`instances-builder`:** this takes an `instances-builder` object, which in turn takes a source to retrieve instances from and a builder which assembles them into a list.
 -   **`toplevel-p` (default: `t`):** whether the router is meant to process only top-level requests.
@@ -91,24 +91,18 @@ Finally, if you'd like to process non top-level requests only for a given instan
 
     (make-instance 'router:redirector
                    :route (match-domain "example.org")
-                   :redirect-url "acme.org"
+                   :redirect "acme.org"
                    :toplevel-p nil)
 
 `redirector` is a redirect router that takes the following direct slots:  
 
--   **`redirect-url`:** a string for a URL host to redirect to or a `quri:uri` object for a complete URL to redirect to. If `redirect-rule` or `route` is a PCRE, you can use this as the replacement string and include special sub-strings like those used in `ppcre:regex-replace` (e.g. `\N`, `\'`, `` \` ``, etc.).
-
--   **`redirect-rule`:** a PCRE to match against the current URL or an association list of redirection rules for paths. If the latter, each entry is a cons of the form `REDIRECT . ROUTES`, where `ROUTES` is a list of paths from the `route` that will be redirected to `REDIRECT` in `redirect-url`. To redirect all paths except `ROUTES` to `REDIRECT`, prefix this list with `not`.
-
--   **`original-url`:** takes either a string for the router's original host or a `quri:uri` object for the original complete URL. This is useful for storage purposes (bookmarks, history, etc.) so that the original URL is recorded instead of the redirect's URL.
+-   **`redirect`:** a string for a URL hostname to redirect to, a `quri:uri` object for a complete URL to redirect to, a PCRE (used as the replacement string of `ppcre:regex-replace` against `route`), or an association list of redirection rules. In the latter, each entry is a cons of the form `REDIRECT . ROUTES`, where `ROUTES` is a list of regexps from the `route` that will be matched against and redirected to `REDIRECT`. To redirect all paths except `ROUTES` to `REDIRECT`, prefix this list with `not`.
+-   **`reverse`:** a string for the router's original host or a `quri:uri` object for the original complete URL. This is useful for storage purposes (bookmarks, history, etc.) so that the original URL is recorded instead of the redirect's URL.
 
 `blocker` is a blocking router that takes the following direct slots:  
 
 -   **`block-banner-p` (default: `t`):** whether to display a block banner upon blocking the route.
-
--   **`blocklist`:** A PCRE to match against the current route, `t` to block the entire route, or a property list of blocking conditions in the form of `TYPE VALUE`, where `TYPE` is one of `:path` or `:host`.  `VALUE` is another plist of the form `PRED RULES`, where `PRED` is either `:starts`, `:ends`, or `:contains` and `RULES` is a list of strings to draw the comparison against according to the current `TYPE`.  If `RULES` is prefixed with `not`, the entire route will be blocked except for the specified `RULES`.  
-    
-    You can also pass an integer as `VALUE` to indicate the number of URL *sections* (e.g. `https://example.com/<section1>/<section2>`) to block in case the blocking condition value is not known. Combined `RULES` (specified via `:or`) allow you to specify two or more predicates that you wish to draw the path comparison against, useful if you want to specify a more general block rule first and bypass it for certain scenarios.
+-   **`blocklist`:** A PCRE to match against the current route, `t` to block the entire route, or a list of regexps to draw the comparison against. If any single list is prefixed with `not`, the entire route will be blocked except for the specified regexps. If all of the lists are prefixed with `or`, this follows an exception-based blocking where you can specify a more general block regexp first and bypass it for more specific routes.
 
 `opener` is a router that instructs resources to be opened externally. It takes the following direct slots:  
 
@@ -117,34 +111,37 @@ Finally, if you'd like to process non top-level requests only for a given instan
 
 ## Examples
 
-Set up all Instagram requests to redirect to the hostname `www.picuki.com` and additionally redirect all the paths that don't start with `/`, `/p/`, or `/tv/` to `/profile/` paths, and all paths that do start with `/p/` to `/media/`. This goes in line with the URL structure that Picuki uses.  
+Redirect YouTube requests that match certain regexps to their corresponding [Tubo](https://github.com/migalmoreno/tubo) counterparts.  
+
+    (make-instance 'router:redirector
+                   :route (match-domain "youtube.com")
+                   :redirect
+                   '(("https://tubo.migalmoreno.com/stream?url=\\&" . (".*/watch\\?v.*" ".*/shorts/.*"))
+                     ("https://tubo.migalmoreno.com/playlist?list=\\&" . ".*/playlist/.*")
+                     ("https://tubo.migalmoreno.com/channel?url=\\&" . ".*/channel/.*")))
+
+Set up a redirect for all Instagram requests except those that match the regexps `.*/tv/.*` or `.*/reels/.*` to <https://picuki.com/profile/>, and redirect routes that match the regexp `.*/p/(.*)` to <https://pickuki.com/media/\\1>, where the replacement string `\\1` will be replaced by the `(.*)` capture group in the URL.  
 
     (make-instance 'router:redirector
                    :route (match-regex "https://(www.)?insta.*")
-                   :redirect-url "www.picuki.com"
-                   :redirect-rule '(("/profile/" . (not "/" "/p/" "/tv/"))
-                                    ("/media/" . "/p/")))
+                   :redirect
+                   '(("https://picuki.com/profile/" . (not ".*/tv/.*" ".*/reels/.*"))
+                     ("https://pickuki.com/media/\\1" . ".*/p/(.*)")))
 
-Redirect all TikTok requests except the index path, videos, or usernames to `/@placeholder/video/`. This is what [ProxiTok](https://github.com/pablouser1/ProxiTok) uses to proxy TikTok shared links.  
-
-    (make-instance 'router:redirector
-                   :route (match-domain "tiktok.com")
-                   :redirect-url "proxitok.herokuapp.com"
-                   :redirect-rule '(("/@placeholder/video/" . (not "/" "/@" "/t"))))
-
-Redirect all Reddit requests to your preferred [Teddit](https://codeberg.org/teddit/teddit) instance and additionally block all of the paths belonging to this route except those that contain the `/comments` sub-string.  
+Redirect all TikTok requests except the index path, videos, or usernames to <https://tok.artemislena.eu/@placeholder/video/>, and redirect the rest of routes to <https://tok.artemislena.eu/\\1>, where the replacement string `\\1` will be replaced by everything following the original hostname in the URL. Additionally, block all the routes except those that contain the `.*/video/.*` or the `.*/t/.*` regexps.  
 
     (list
      (make-instance 'router:redirector
-                    :name 'reddit
-                    :route (match-domain "reddit.com")
-                    :redirect-url "teddit.namazso.eu"
-                    :original-url "www.reddit.com")
+                    :name 'tiktok
+                    :route (match-domain "tiktok.com")
+                    :redirect
+                    '(("https://tok.artemislena.eu/@placeholder/video/" . (not ".*/@.*" ".*/t/.*"))
+                      ("https://tok.artemislena.eu/\\1" . ".*://[^/]*/(.*)$")))
      (make-instance 'router:blocker
-                    :name 'reddit
-                    :blocklist '(:path (:contains (not "/comments")))))
+                    :name 'tiktok
+                    :blocklist '(or (not ".*/video/.*") (not ".*/t/.*"))))
 
-You can pass an `:original-url` slot to the `redirector` router to perform a reverse redirection of the route, which can be useful when recording your history, for instance. For this, you have to wrap Nyxt internal methods like this:  
+You can pass a `:reverse` slot to the `redirector` router to perform a reverse redirection of the route, which can be useful when recording your history, for instance. For this, you have to wrap Nyxt internal methods like this:  
 
     (defmethod nyxt:on-signal-load-finished :around ((mode nyxt/history-mode:history-mode) url)
       (call-next-method mode (router:trace-url url)))
@@ -153,22 +150,22 @@ Use a `redirector` router with a PCRE trigger to redirect all Fandom routes to y
 
     (make-instance 'router:redirector
                    :route "https://([\\w'-]+)\\.fandom.com/wiki/(.*)"
-                   :redirect-url "https://breezewiki.com/\\1/wiki/\\2")
+                   :redirect "https://breezewiki.com/\\1/wiki/\\2")
 
-Use a `redirector` router to match on YouTube video URLs and MP3 files and redirect these to `youtube.com`, and dispatch an `opener` router that launches an [mpv](https://mpv.io/) player IPC client process through [mpv.el](https://github.com/kljohann/mpv.el) to control the player from Emacs. You can also pass a one-placeholder format string such as `mpv --video=no ~a` to the `resource` slot if you'd rather not use a Lisp form, where `~a` represents the matched URL.  
+Use a `redirector` router to match YouTube-like video URLs and MP3 files and redirect these to <https://www.youtube.com>, and dispatch an `opener` router that launches an [mpv](https://mpv.io/) player IPC client process through [mpv.el](https://github.com/kljohann/mpv.el) to control the player from Emacs. You can also pass a one-placeholder format string such as `mpv --video=no ~a` to the `resource` slot if you'd rather not use a Lisp form, where `~a` represents the matched URL.  
 
     (list
      (make-instance 'router:redirector
                     :name 'youtube
                     :route '((match-regex ".*/watch\\?v=.*")
                              (match-file-extension "mp3"))
-                    :redirect-url "youtube.com")
+                    :redirect "www.youtube.com")
      (make-instance 'router:opener
                     :name 'youtube
                     :resource (lambda (url)
                                (eval-in-emacs `(mpv-start ,url)))))
 
-Pass the router an `instances-builder` to generate a list of instances that will be appended to the routes on router instantiation. Also provide `redirect-url` as a function to compute the redirect hostname to use. See [instances.lisp](instances.lisp) for some predefined builders for front-end providers.  
+Pass an `instances-builder` to generate a list of instances that will be appended to the routes on router instantiation. Also provide `redirect` as a function to compute the redirect hostname to use. See [instances.lisp](instances.lisp) for some predefined builders for front-end providers.  
 
     (defun set-invidious-instance ()
       "Set the primary Invidious instance."
@@ -189,28 +186,27 @@ Pass the router an `instances-builder` to generate a list of instances that will
     
     (make-instance 'router:redirector
                    :route (match-domain "youtube.com" "youtu.be")
-                   :redirect-url #'set-invidious-instance
+                   :redirect #'set-invidious-instance
                    :instances-builder router:invidious-instances-builder)
 
-If you'd like to redirect a route to a URL with a scheme other than HTTPS or a non-standard port, you need to supply `redirect-url` as a `quri:uri` object. For instance, this sets up a router that redirects Google results to a locally-running [whoogle-search](https://github.com/benbusby/whoogle-search) instance and where results will appear as if they were searched in Google:  
+If you'd like to redirect a route to a URL with a scheme other than HTTPS or a non-standard port, you need to supply `redirect` as a `quri:uri` object. For instance, this sets up a router that redirects Google results to a locally-running [whoogle-search](https://github.com/benbusby/whoogle-search) instance and where results will appear as if they were searched in Google:  
 
     (make-instance 'router:redirector
                    :route (match-regex ".*://whoogle.*" ".*://.*google.com/search.*")
-                   :redirect-url (quri:uri "http://localhost:5000")
-                   :original-url (quri:uri "https://www.google.com"))
+                   :redirect (quri:uri "http://localhost:5000")
+                   :reverse (quri:uri "https://www.google.com"))
 
-If you want to randomize `redirect-url` between a list of hosts, you can use a service like [Farside](https://sr.ht/~benbusby/farside/) and include a router along these lines:  
+If you want to randomize your `redirect` between a list of hosts, you can use a service like [Farside](https://sr.ht/~benbusby/farside/) and write a router along these lines:  
 
     (make-instance 'router:redirector
                    :route (match-domain "twitter.com")
-                   :redirect-url "farside.link"
-                   :redirect-rule '(("/nitter/" . "/")))
+                   :redirect '(("https://farside.link/nitter/\\1" . ".*://[^/]*/(.*)$")))
 
-Use a router with a combined `blocklist` path rule for <https://github.com>. These rules allow you to specify two or more predicates to draw the path comparison against. In the example below, an integer indicates we want to block paths that consist of a single path sub-section (e.g. `https://github.com/<sub-section>`), *or* block all paths except those that contain the `pulls` or `search` sub-strings. This allows you to provide a general block rule and bypass it for specific routes.  
+Use a router with an exception-based `blocklist` for <https://github.com>. These rules allow you to specify two or more predicates to draw the block-list comparison against. In the example below, the first regex indicates we want to block routes that consist of a single path entry (e.g. `https://github.com/path`) **or** block routes except those that contain the `/pulls` or `/search` paths. This allows you to provide a general block rule and bypass it for specific routes.  
 
     (make-instance 'router:blocker
                    :route (match-domain "github.com")
-                   :blocklist '(:path (:or 1 (:contains (not "pulls" "search")))))
+                   :blocklist '(or ".*://[^/]*/[^/]*$" (not ".*/pulls.*" ".*/search.*")))
 
 
 ## Contributing
