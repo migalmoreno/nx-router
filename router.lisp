@@ -269,54 +269,17 @@ redirect.  If REVERSED, reverse the redirection."
           into paths
         finally (return (car (delete nil paths)))))
 
-(-> block-rules-p (list quri:uri keyword) boolean)
-(defun block-rules-p (rules url type)
-  "Determine whether RULES should be blocked in URL according to TYPE."
-  (flet ((assess-block-rules (url type test rules)
-           (if (and (consp rules)
-                    (equal (first rules) 'not))
-               (not (url-compare url (rest rules) :eq-fn test :type type))
-               (url-compare url (if (consp rules)
-                                    rules
-                                    (list rules))
-                            :eq-fn test :type type))))
-    (loop for (predicate elements) on rules
-            by #'cddr while elements
-          collect (case predicate
-                    (:contains (assess-block-rules url type :contains elements))
-                    (:starts (assess-block-rules url type :starts elements))
-                    (:ends (assess-block-rules url type :ends elements)))
-            into blocked-results
-          finally (return (not (some #'null blocked-results))))))
-
-(-> block-paths-p ((or list integer) quri:uri) boolean)
-(defun block-paths-p (paths url)
-  "Determine whether PATHS should be blocked for URL's path."
-  (etypecase paths
-    (list (if (equal (first paths) :or)
-              (loop for clause in (rest paths)
-                    collect
-                    (etypecase clause
-                      (list (block-rules-p clause url :path))
-                      (integer (= (length (str:split-omit-nulls
-                                           "/" (quri:uri-path url)))
-                                  clause)))
-                      into clauses
-                    finally (return (notevery #'null clauses)))
-              (block-rules-p paths url :path)))
-    (integer (= (length (str:split-omit-nulls "/" (quri:uri-path url)))
-                paths))))
-
-(-> block-hosts-p (list quri:uri) boolean)
-(defun block-hosts-p (hosts url)
-  "Determine whether HOSTS should be blocked for URL's host."
-  (etypecase hosts
-    (list (if (equal (first hosts) :or)
-              (loop for clause in (rest hosts)
-                    collect (block-rules-p clause url :host)
-                      into clauses
-                    finally (return (notevery #'null clauses)))
-              (block-rules-p hosts url :host)))))
+(-> block-rules-p (list quri:uri) boolean)
+(defun get-blocklist (targets url)
+  "Determine whether TARGETS should be blocked in URL by matching it
+with KEY."
+  (loop for target in targets
+        collect
+        (if (and (consp targets) (equal (first targets) 'not))
+            (not (find-url url (rest targets) :pred #'every))
+            (find-url url (if (consp targets) targets (list targets)) :pred #'every))
+          into blocked-results
+        finally (return (not (some #'null blocked-results)))))
 
 (defgeneric compute-router (router url &key &allow-other-keys))
 
@@ -365,23 +328,13 @@ redirect.  If REVERSED, reverse the redirection."
       (string
        (not (null (ppcre:scan blocklist (render-url url)))))
       (list
-       (if (equal (first blocklist) :or)
-           (loop for blocklist-type in (rest blocklist)
-                 collect (loop for (type rules) on blocklist-type
-                                 by #'cddr while rules
-                               collect (case type
-                                         (:path (block-paths-p rules url))
-                                         (:host (block-hosts-p rules url)))
-                                 into clauses
-                               finally (return (not (some #'null clauses))))
+       (if (equal (first blocklist) 'or)
+           (loop for rules in (rest blocklist)
+                 collect
+                 (get-blocklist (if (consp rules) rules (list rules)) url)
                    into clauses
-                 finally (return (notevery #'null clauses)))
-           (loop for (type rules) on blocklist by #'cddr while rules
-                 collect (case type
-                           (:path (block-paths-p rules url))
-                           (:host (block-hosts-p rules url)))
-                   into clauses
-                 finally (return (not (some #'null clauses))))))
+                 finally (return (not (some #'null clauses))))
+           (get-blocklist blocklist url)))
       (otherwise t))))
 
 (defmethod compute-router ((router opener) url &key)

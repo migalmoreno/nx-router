@@ -35,15 +35,7 @@
 (defparameter *blocker-with-list-blocklist*
   (make-instance 'router:blocker
                  :route (match-domain *url*)
-                 :blocklist '(:path (:starts "/about" :ends "/work")
-                              :host (:starts "nyxt" :contains "atlas"))))
-
-(defparameter *blocker-with-list-blocklist-or-rules*
-  (make-instance 'router:blocker
-                 :route (match-domain *url*)
-                 :blocklist '(:or
-                              (:path (:or (:starts "/about") (:ends "/work")))
-                              (:host (:or (:starts "nyxt") (:contains "atlas"))))))
+                 :blocklist (list ".*/about.*/work$" ".*://nyxt.*atlas.*")))
 
 (defparameter *blocker-with-regexp-blocklist*
   (make-instance 'router:blocker
@@ -70,6 +62,10 @@
                    (quri:uri "https://atlas.engineer/v/1234")
                    (nx-router::compute-router *redirector-with-list-rule*
                                              (quri:make-uri :defaults *url* :path "/v/1234"))))
+(defparameter *blocker-with-list-exception-blocklist*
+  (make-instance 'router:blocker
+                 :route (match-domain *url*)
+                 :blocklist '(or "://.*/.*" (not ".*/about.*" ".*://nyxt.*atlas.*"))))
 
 (define-test redirector-with-nonstandard-port-and-scheme ()
   (assert-equality #'quri:uri=
