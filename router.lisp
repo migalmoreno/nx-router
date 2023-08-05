@@ -68,24 +68,19 @@ certain scenarios."))
   (:documentation "General-purpose `router' to determine what to block."))
 
 (define-class redirector (router)
-  ((redirect-rule
+  ((redirect
     nil
-    :type (or null string list)
-    :documentation "A PCRE to match against the current URL or an alist of
-redirection rules for paths.
-Each entry is a cons of the form REDIRECT . ROUTES, where
-ROUTES is a list of paths that will be redirected to REDIRECT.
-To redirect all paths except ROUTES to REDIRECT, prefix this list with `not'.")
-   (redirect-url
-    nil
-    :type (or null string quri:uri function symbol)
-    :documentation "The URL to redirect to.")
-   (original-url
+    :type (or null string list quri:uri function symbol)
+    :documentation "A string for the hostname of the URL to redirect to, a PCRE
+or an alist of redirection rules.
+These have the form REDIRECT . ROUTES, where ROUTES is a list of regexps that
+will be matched against and redirected to REDIRECT.  To redirect all routes
+except ROUTES to REDIRECT, prefix this list with `not'.")
+   (reverse
     nil
     :type (or null string quri:uri)
     :documentation "Original URL of the redirect.  Useful for storage purposes
-(bookmarks, history, etc.) so that the original URL is recorded instead of the
-redirect."))
+ (bookmarks, history, etc.) so this is recorded instead of the redirect."))
   (:export-class-name-p t)
   (:export-slot-names-p t)
   (:export-accessor-names-p t)
@@ -165,18 +160,19 @@ the current URL as argument, and can be given in a `format'-like syntax."))
 
 (-> match-by-redirect (quri:uri router-mode) maybe-list-of-routers)
 (defun match-by-redirect (url mode)
-  "Match MODE routes by route redirect against URL."
+  "Match MODE routers by route redirect against URL."
   (remove-if-not
    (lambda (router)
      (when (and (redirector-p router)
-                (with-slots (redirect-url) router
-                  (and redirect-url
+                (with-slots (redirect) router
+                  (and redirect
                        (string= (quri:uri-host url)
-                                (etypecase redirect-url
-                                  (string redirect-url)
-                                  (quri:uri (quri:uri-host redirect-url))
+                                (etypecase redirect
+                                  (string redirect)
+                                  (quri:uri (quri:uri-host redirect))
+                                  (list (get-redirect redirect url))
                                   ((or function symbol)
-                                   (funcall redirect-url)))))))
+                                   (funcall redirect)))))))
        router))
    (routers mode)))
 
@@ -219,16 +215,17 @@ the current URL as argument, and can be given in a `format'-like syntax."))
                                   (nyxt:find-submode
                                    (sym:resolve-symbol :router-mode :mode
                                                        '(:nx-router)))))))
-    (with-slots (redirect-url original-url) router
+    (with-slots (redirect reverse) router
       (cond
         ((and router
-              (string= (etypecase redirect-url
-                         (string redirect-url)
-                         (quri:uri (quri:uri-host redirect-url))
-                         ((or function symbol) (funcall redirect-url)))
+              (string= (etypecase redirect
+                         (string redirect)
+                         (quri:uri (quri:uri-host redirect))
+                         (list "")
+                         ((or function symbol) (funcall redirect)))
                        (quri:uri-host url)))
-         (compute-router router url :reverse t))
-        ((and router original-url) (quri:copy-uri url :host original-url))
+         (compute-router router url :reversed t))
+        ((and router reverse) (quri:copy-uri url :host reverse))
         (t url)))
     url))
 
@@ -253,42 +250,36 @@ while EQ-FN can be one of :starts, :contains, or :ends."
                (funcall predicate prefix uri-part))
              url-parts)))
 
-(-> redirect-paths (list quri:uri &key (:reverse boolean)) (or string null))
-(defun redirect-paths (rules url &key reverse)
-  "Redirect path RULES for URL.
-If REVERSE, reverse the redirect logic."
-  (loop for (replacement . original-rules) in rules
+(-> get-redirect (list quri:uri &key (:reversed boolean)) (or string null))
+(defun get-redirect (rules url &key reversed)
+  "Compute redirect TARGETS for URL and return the first matching
+redirect.  If REVERSED, reverse the redirection."
+  (loop for (replacement . targets) in rules
         collect
-        (if reverse
-            (alex:when-let ((prefix (url-compare
-                                     url (list replacement) :value t)))
-              (str:replace-first
-               prefix
-               (cond
-                 ((and (consp original-rules)
-                       (equal (first original-rules) 'not))
-                  "")
-                 ((consp original-rules) (car original-rules))
-                 (t original-rules))
-               (quri:uri-path url)))
-            (if (and (consp original-rules) (equal (first original-rules) 'not))
-                (unless (or (url-compare url (remove-if (lambda (rule)
-                                                          (string= rule "/"))
-                                                        (rest original-rules)))
-                            (find-if (lambda (prefix)
-                                       (and (str:starts-with? "/" prefix)
-                                            (string= (quri:uri-path url) "/")))
-                                     (rest original-rules)))
-                  (str:concat replacement
-                              (str:join "/" (str:split-omit-nulls
-                                             "/" (quri:uri-path url)))))
-                (alex:when-let ((old-prefix
-                                 (url-compare url (if (consp original-rules)
-                                                      original-rules
-                                                      (list original-rules))
-                                              :value t)))
-                  (str:replace-first
-                   old-prefix replacement (quri:uri-path url)))))
+        (cond
+          (reversed
+           (alex:when-let ((prefix (find-url url (list replacement))))
+             (ppcre:regex-replace
+              (cond
+                ((and (consp targets)
+                      (equal (first targets) 'not))
+                 "")
+                ((consp targets) (car targets))
+                (t targets))
+              prefix (quri:render-uri url))))
+          ((and (consp targets) (equal (first targets) 'not))
+           (unless (find-url url (rest targets))
+             (str:concat replacement
+                         (str:join "/" (str:split-omit-nulls
+                                        "/" (quri:uri-path url))))))
+          (t (alex:when-let ((prefix
+                              (find-url
+                               url
+                               (if (consp targets)
+                                   targets
+                                   (list targets)))))
+               (ppcre:regex-replace prefix (quri:render-uri url)
+                                    replacement))))
           into paths
         finally (return (car (delete nil paths)))))
 
@@ -343,7 +334,7 @@ If REVERSE, reverse the redirect logic."
 
 (defgeneric compute-router (router url &key &allow-other-keys))
 
-(defmethod compute-router ((router redirector) url &key reverse)
+(defmethod compute-router ((router redirector) url &key reversed)
   (flet ((build-uri (uri)
            (let ((uri (quri:uri uri)))
              (apply #'quri:make-uri
@@ -356,36 +347,31 @@ If REVERSE, reverse the redirect logic."
                     (alex:if-let ((port (quri:uri-port uri)))
                       (list :port port)
                       '())))))
-    (with-slots (original-url redirect-url redirect-rule route) router
-      (let ((redirect-url
-              (let ((redirect (etypecase redirect-url
-                                (quri:uri redirect-url)
-                                (string (quri:make-uri :host redirect-url))
-                                ((or function symbol)
-                                 (quri:uri (funcall redirect-url))))))
-                (if (stringp route)
-                    (if (ppcre:scan route (render-url url))
-                        (ppcre:regex-replace
-                         route (render-url url) redirect-url)
-                        url)
-                    (if redirect-rule
-                        (typecase redirect-rule
-                          (string
-                           (if (ppcre:scan redirect-rule (render-url url))
-                               (ppcre:regex-replace
-                                redirect-rule (render-url url) redirect-url)
-                               url))
-                          (list
-                           (quri:copy-uri
-                            url :host (quri:uri-host redirect)
-                                :path (redirect-paths
-                                       redirect-rule url :reverse reverse)))
-                          (otherwise redirect))
-                        redirect)))))
-        (build-uri
-         (if (and reverse original-url)
-             original-url
-             redirect-url))))))
+    (with-slots (reverse redirect route) router
+      (cond
+        ((stringp route)
+         (quri:uri
+          (if (ppcre:scan route (render-url url))
+              (ppcre:regex-replace
+               route (render-url url) (etypecase redirect
+                                        (string redirect)
+                                        (quri:uri (render-url redirect))))
+              url)))
+        ((consp redirect)
+         (alex:if-let ((redirect-url
+                        (get-redirect redirect url
+                                      :reversed reversed)))
+           (quri:uri redirect-url)
+           url))
+        (t
+         (build-uri
+          (if reversed
+              reverse
+              (typecase redirect
+                (string (quri:make-uri :host redirect))
+                (quri:uri redirect)
+                ((or function symbol)
+                 (quri:uri (funcall redirect)))))))))))
 
 (defmethod compute-router ((router blocker) url &key)
   (with-slots (blocklist) router

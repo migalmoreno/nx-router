@@ -3,28 +3,34 @@
 
 (defvar *url* "https://example.org/")
 
-(defparameter *redirector-with-list-rule*
+(defparameter *redirector-with-host-redirect*
   (make-instance 'router:redirector
                  :route (match-domain *url*)
-                 :redirect-url "atlas.engineer"
-                 :redirect-rule '(("/community/" . "/c/")
-                                  ("/about/" . (not "/" "/v/")))))
+                 :redirect "atlas.engineer"))
 
-(defparameter *redirector-with-regexp-route*
+(defparameter *redirector-with-quri-redirect*
+  (make-instance 'router:redirector
+                 :route (match-domain *url*)
+                 :redirect (quri:uri "http://atlas.engineer:8080")))
+
+(defparameter *redirector-with-regexp-redirect*
   (make-instance 'router:redirector
                  :route "https://(\\w+)\\.atlas.engineer/(.*)"
-                 :redirect-url "https://atlas.engineer/\\1/\\2"))
+                 :redirect "https://atlas.engineer/\\1/\\2"))
 
-(defparameter *redirector-with-regexp-rule*
+(defparameter *redirector-with-list-redirect*
   (make-instance 'router:redirector
                  :route (match-domain *url*)
-                 :redirect-url "https://atlas.engineer/\\1/\\2"
-                 :redirect-rule "https://(\\w+)\\.atlas.engineer/(.*)"))
+                 :redirect
+                 '(("https://atlas.engineer/community/\\1" . ".*/c/(.*)")
+                   ("https://atlas.engineer/" . ".*/$")
+                   ("https://atlas.engineer/about/" . (not ".*/v/.*")))))
 
-(defparameter *redirector-with-nonstandard-port-and-scheme*
+(defparameter *redirector-with-list-redirect-regexp-interpolation*
   (make-instance 'router:redirector
                  :route (match-domain *url*)
-                 :redirect-url (quri:uri "http://atlas.engineer:8080")))
+                 :redirect
+                 '(("https://atlas.engineer/\\1/\\2" . "https://(\\w+)\\.atlas.engineer/(.*)"))))
 
 (defparameter *blocker-with-list-blocklist*
   (make-instance 'router:blocker
