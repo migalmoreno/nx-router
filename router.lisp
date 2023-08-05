@@ -229,26 +229,12 @@ the current URL as argument, and can be given in a `format'-like syntax."))
         (t url)))
     url))
 
-(-> url-compare (quri:uri list &key (:type keyword) (:eq-fn keyword) (:value boolean)) t)
-(defun url-compare (url url-parts &key (type :path) (eq-fn :starts) value)
-  "Return true or VALUE if at least one of URL-PARTS matches the
- provided URL TYPE with EQ-FN. TYPE can be one of :host, :path or :domain,
-while EQ-FN can be one of :starts, :contains, or :ends."
-  (let ((uri-part (case type
-                    (:host
-                     (quri:uri-host url))
-                    (:domain
-                     (quri:uri-domain url))
-                    (otherwise
-                     (quri:uri-path url))))
-        (predicate (case eq-fn
-                     (:contains #'str:containsp)
-                     (:ends #'str:ends-with-p)
-                     (otherwise #'str:starts-with-p))))
-    (funcall (if value #'find-if #'some)
-             (lambda (prefix)
-               (funcall predicate prefix uri-part))
-             url-parts)))
+(-> find-url (quri:uri list &key (:key function) (:test function) (:pred function)) t)
+(defun find-url (url url-parts &key (key #'quri:render-uri) (test #'ppcre:scan) (pred #'find-if))
+  "Test URL-PARTS with PRED against URL by KEY with TEST."
+  (funcall pred (lambda (prefix)
+                  (funcall test prefix (funcall key url)))
+           url-parts))
 
 (-> get-redirect (list quri:uri &key (:reversed boolean)) (or string null))
 (defun get-redirect (rules url &key reversed)
