@@ -350,29 +350,29 @@ with KEY."
 (nyxt::define-internal-page-command-global display-blocked-page (&key url)
     (buffer "*Blocked Site*" 'nyxt:base-mode)
   "Show blocked internal page for URL."
-  (let ((blocked-style (theme:themed-css (nyxt:theme nyxt:*browser*)
-                         `(body
-                           :padding 0
-                           :margin 0)
-                         `(.container
-                           :display flex
-                           :height 100vh
-                           :justify-content center
-                           :align-items center
-                           :flex-direction column
-                           :text-align center)
-                         `(|#banner|
-                           :display flex
-                           :justify-content center
-                           :flex-direction column
-                           :width 70vw)
-                         `(|#url|
-                           :text-decoration none
-                           :font-weight bold
-                           :color ,theme:accent
-                           :pointer-events none))))
+  (let ((style (theme:themed-css (nyxt:theme nyxt:*browser*)
+                 `(body
+                   :padding 0
+                   :margin 0)
+                 `(.container
+                   :display flex
+                   :height 100vh
+                   :justify-content center
+                   :align-items center
+                   :flex-direction column
+                   :text-align center)
+                 `(|#banner|
+                   :display flex
+                   :justify-content center
+                   :flex-direction column
+                   :width 70vw)
+                 `(|#url|
+                   :text-decoration none
+                   :font-weight bold
+                   :color ,theme:accent
+                   :pointer-events none))))
     (spinneret:with-html-string
-      (:style blocked-style)
+      (:style style)
       (:div :class "container"
             (:img :src "https://nyxt.atlas.engineer/image/nyxt_128x128.png")
             (:div :id "banner"
