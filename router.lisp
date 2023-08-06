@@ -19,7 +19,7 @@
     nil
     :type (maybe (list-of instances-builder))
     :documentation "An `instances-builder' object that holds the necessary setup
-to build a list of instances for a service provider.  These will be added to
+to build a list of instances for a service provider.  These will be appended to
 the router's `route'.")
    (toplevel-p
     t
@@ -43,24 +43,16 @@ the router's `route'.")
   ((block-banner-p
     t
     :type boolean
-    :documentation "Whether to display a block banner upon blocking the `router'.")
+    :documentation "Whether to display a block banner upon route blocking.")
    (blocklist
     nil
     :type (or boolean string list)
-    :documentation "A PCRE to match against the current URL, `t' to block the
-entire route, or a property list of blocking conditions in the form of
-TYPE VALUE, where TYPE is one of :path or :host.  VALUE is another plist of the
-form PRED RULES, where PRED is either :starts, :ends, or :contains and RULES is
-a list of strings to draw the comparison against according to the current TYPE.
-If RULES is prefixed with `not', the entire route will be blocked except for
-the specified RULES.  You can also pass an integer as VALUE to indicate the
-number of URL sections (e.g. https://example.com/<section1>/<section2>) to
-block in case the blocking condition value is not known.
-
-Combined RULES (specified via `:or') allow you to specify two or more
-predicates that you wish to draw the path comparison against, useful if
-you want to specify a more general block rule first and bypass it for
-certain scenarios."))
+    :documentation "A PCRE to match against the current route, `t' to block the
+entire route, or a list of regexps to draw the comparison against.  If any
+single list is prefixed with `not', the entire route will be blocked except for
+the specified regexps.  If all of the lists are prefixed with `or', this follows
+an exception-based blocking where you can specify a more general block regexp
+first and bypass it for more specific routes."))
   (:export-class-name-p t)
   (:export-slot-names-p t)
   (:export-accessor-names-p t)
@@ -72,10 +64,10 @@ certain scenarios."))
     nil
     :type (or null string list quri:uri function symbol)
     :documentation "A string for the hostname of the URL to redirect to, a PCRE
-or an alist of redirection rules.
-These have the form REDIRECT . ROUTES, where ROUTES is a list of regexps that
-will be matched against and redirected to REDIRECT.  To redirect all routes
-except ROUTES to REDIRECT, prefix this list with `not'.")
+or an alist of redirection rules.  These have the form REDIRECT . ROUTES, where
+ROUTES is a list of regexps that will be matched against and redirected to
+REDIRECT.  To redirect all routes except ROUTES to REDIRECT, prefix this list
+with `not'.")
    (reverse
     nil
     :type (or null string quri:uri)
@@ -268,10 +260,9 @@ redirect.  If REVERSED, reverse the redirection."
           into paths
         finally (return (car (delete nil paths)))))
 
-(-> block-rules-p (list quri:uri) boolean)
+(-> get-blocklist (list quri:uri) boolean)
 (defun get-blocklist (targets url)
-  "Determine whether TARGETS should be blocked in URL by matching it
-with KEY."
+  "Determine whether TARGETS should be blocked according to URL."
   (loop for target in targets
         collect
         (if (and (consp targets) (equal (first targets) 'not))
