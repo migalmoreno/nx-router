@@ -1,8 +1,8 @@
 (defsystem "nx-router"
-  :description "nx-router is a simple URL routing extension for Nyxt"
+  :description "nx-router is a declarative URL routing extension for Nyxt"
   :author "Miguel Ángel Moreno"
   :license "BSD 3-Clause"
-  :version "0.2.0"
+  :version "0.3.0"
   :serial t
   :depends-on ("nyxt")
   :components ((:file "package")
