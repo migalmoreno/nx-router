@@ -2,7 +2,7 @@
 
 # nx-router
 
-`nx-router` is a declarative URL routing extension for [Nyxt](https://nyxt.atlas.engineer/). In short, it's an abstraction around Nyxt request resource handlers that uses `router` objects to make it more convenient to handle routes. See [Examples](#org67335de) for a walk-through on how to set up routers.  
+`nx-router` is a declarative URL routing extension for [Nyxt](https://nyxt.atlas.engineer/). In short, it's an abstraction around Nyxt request resource handlers that uses `router` objects to make it more convenient to handle routes. See [Examples](#org40673bb) for a walk-through on how to set up routers.  
 
 The main drive behind `nx-router` was I initially found built-in handlers difficult to reason and I soon became frustrated with how much imperative logic I had to maintain. `nx-router` aims to simplify resource handling in Nyxt with declarative redirects, blockers, and resource handlers. You may think of it as a more batteries-included `url-dispatching-handler`.  
 
@@ -68,7 +68,7 @@ This shows some example routers you'd set up inside the `router-mode` configurat
                         :redirect
                         '(("https://\\1.acme.org/\\2" . ".*/p/(\\w+)/(.*)")))))))
 
-The first router specifies a redirect so that any route of <https://example.org> that doesn't match the regexps `.*/$` or `.*/wiki$` will get redirected to <https://acme.org/example>. The second router sets a block-list for the router if its route matches the `.*/factory` PCRE and adds an `instances-builder` which will fetch a list of routes and append them to the router's. Note that the second router has a `name` slot, which will allow subsequent routers to inherit the parent-class slots. The third router instructs a resource to be opened upon route activation, and the fourth router uses regexp interpolation to redirect the `.*/p/(\\w+)/(.*)` regexp to <https://\\1.acme.org/\\2>, where `\\1` and `\\2` will be replaced with the corresponding capture groups.  
+The first router specifies a redirect so that any route of <https://example.org> that doesn't match the regexps `.*/$` or `.*/wiki$` will get redirected to <https://acme.org/example>. The second router sets a block-list for the router if its route matches the `.*/factory` PCRE and adds an `instances-builder` which will fetch a list of routes and append them to the router's. Note that the second router has a `name` slot, which will allow subsequent routers to inherit the parent-class slots. The third router instructs a resource to be opened upon route activation, and the fourth router uses regexp interpolation to redirect the `.*/p/(\\w+)/(.*)` regexp to `https://\\1.acme.org/\\2`, where `\\1` and `\\2` will be replaced with the corresponding capture groups.  
 
 All routers derive from a `router` parent class that holds common router settings:  
 
@@ -120,7 +120,7 @@ Redirect YouTube requests that match certain regexps to their corresponding [Tub
                      ("https://tubo.migalmoreno.com/playlist?list=\\&" . ".*/playlist/.*")
                      ("https://tubo.migalmoreno.com/channel?url=\\&" . ".*/channel/.*")))
 
-Set up a redirect for all Instagram requests except those that match the regexps `.*/tv/.*` or `.*/reels/.*` to <https://picuki.com/profile/>, and redirect routes that match the regexp `.*/p/(.*)` to <https://picuki.com/media/\\1>, where the replacement string `\\1` will be replaced by the `(.*)` capture group in the URL.  
+Set up a redirect for all Instagram requests except those that match the regexps `.*/tv/.*` or `.*/reels/.*` to <https://picuki.com/profile/>, and redirect routes that match the regexp `.*/p/(.*)` to `https://picuki.com/media/\\1`, where the replacement string `\\1` will be replaced by the `(.*)` capture group in the URL.  
 
     (make-instance 'router:redirector
                    :route (match-regex "https://(www.)?insta.*")
@@ -128,7 +128,7 @@ Set up a redirect for all Instagram requests except those that match the regexps
                    '(("https://picuki.com/profile/" . (not ".*/tv/.*" ".*/reels/.*"))
                      ("https://pickuki.com/media/\\1" . ".*/p/(.*)")))
 
-Redirect all TikTok requests except the index path, videos, or usernames to <https://tok.artemislena.eu/@placeholder/video/>, and redirect the rest of routes to <https://tok.artemislena.eu/\\1>, where the replacement string `\\1` will be interpolated with everything following the route's hostname. Additionally, block all the routes except those that contain the `.*/video/.*` or the `.*/t/.*` regexps.  
+Redirect all TikTok requests except the index path, videos, or usernames to <https://tok.artemislena.eu/@placeholder/video/>, and redirect the rest of routes to `https://tok.artemislena.eu/\\1`, where the replacement string `\\1` will be interpolated with everything following the route's hostname. Additionally, block all the routes except those that contain the `.*/video/.*` or the `.*/t/.*` regexps.  
 
     (list
      (make-instance 'router:redirector
