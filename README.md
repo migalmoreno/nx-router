@@ -2,9 +2,9 @@
 
 # nx-router
 
-`nx-router` is a declarative URL routing extension for [Nyxt](https://nyxt.atlas.engineer/). In short, it's an abstraction around Nyxt request resource handlers that uses `router` objects to make it more convenient to handle routes. See [Examples](#org40673bb) for a walk-through on how to set up routers.  
+`nx-router` is a declarative URL routing extension for [Nyxt](https://nyxt.atlas.engineer/). In short, it's an abstraction around Nyxt request resource handlers that uses `router` objects to make it more convenient to handle routes. See [Examples](#org02473ed) for a walk-through on how to set up routers.  
 
-The main drive behind `nx-router` was I initially found built-in handlers difficult to reason and I soon became frustrated with how much imperative logic I had to maintain. `nx-router` aims to simplify resource handling in Nyxt with declarative redirects, blockers, and resource handlers. You may think of it as a more batteries-included `url-dispatching-handler`.  
+The main drive behind `nx-router` is that I initially found Nyxt built-in handlers difficult to reason about and I soon became frustrated with how much imperative logic I had to maintain in my configuration. `nx-router` aims to simplify request resource handling in Nyxt with declarative redirects, blockers, and resource handlers. You may think of it as a more batteries-included `url-dispatching-handler`.  
 
 [nx-freestance-handler](https://github.com/kssytsrk/nx-freestance-handler) is a similar extension that provides handlers for popular privacy-friendly front-ends. However, this has the limitation that it only works with a few sites and makes you  reliant on its maintainer updating the extension to add new handlers or modify existing ones.  
 
@@ -108,6 +108,22 @@ Finally, if you'd like to process non top-level requests only for a given instan
 
 -   **`resource`:** a resource can be either a function form, in which case it takes a single parameter URL and can invoke arbitrary Lisp forms with it.  If it's a string, it runs the specified command via `uiop:run-program` with the current URL as argument, and can be given in a `format`-like syntax.
 
+    (make-instance 'router:redirector
+                   :route (match-regex ".*://.*google.com/search.*")
+                   :redirect (quri:uri "http://localhost:5000")
+                   :reverse (quri:uri "https://www.google.com"))
+
+You can include a `:reverse` slot in the `redirector` router with a `quri:uri` object or a string host to perform a reverse redirection of the route, which can be useful when copying the current page's URL or saving your history so that the original URL is recorded. To enable this you have to wrap or override Nyxt internal methods like this:  
+
+    (define-command copy-url ()
+      "Save current URL to clipboard."
+      (let ((url (render-url (router:trace-url (url (current-buffer))))))
+        (copy-to-clipboard url)
+        (echo "~a copied to clipboard." url)))
+    
+    (defmethod nyxt:on-signal-load-finished :around ((mode nyxt/history-mode:history-mode) url)
+      (call-next-method mode (router:trace-url url)))
+
 
 ## Examples
 
@@ -185,16 +201,6 @@ Pass an `instances-builder` to generate a list of instances that will be appende
                    :instances-builder router:invidious-instances-builder)
 
 If you'd like to redirect a route to a URL with a scheme other than HTTPS or a non-standard port, you need to supply `redirect` as a `quri:uri` object. For example, this sets up a router that redirects Google results to a locally-running [whoogle-search](https://github.com/benbusby/whoogle-search) instance:  
-
-    (make-instance 'router:redirector
-                   :route (match-regex ".*://whoogle.*" ".*://.*google.com/search.*")
-                   :redirect (quri:uri "http://localhost:5000")
-                   :reverse (quri:uri "https://www.google.com"))
-
-You can pass a `:reverse` slot to the `redirector` router to perform a reverse redirection of the route, which can be useful when recording your history, for instance. For this, you have to wrap Nyxt internal methods like this:  
-
-    (defmethod nyxt:on-signal-load-finished :around ((mode nyxt/history-mode:history-mode) url)
-      (call-next-method mode (router:trace-url url)))
 
 If you want to randomize your `redirect` between a list of hosts, you can use a service like [Farside](https://sr.ht/~benbusby/farside/) and write a router along these lines:  
 
