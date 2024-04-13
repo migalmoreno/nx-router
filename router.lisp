@@ -305,7 +305,9 @@ redirect.  If REVERSED, reverse the redirection."
         (t
          (build-uri
           (if reversed
-              reverse
+              (typecase reverse
+                (string (quri:make-uri :host reverse))
+                (quri:uri reverse))
               (typecase redirect
                 (string (quri:make-uri :host redirect))
                 (quri:uri redirect)
