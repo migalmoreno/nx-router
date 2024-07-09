@@ -2,7 +2,7 @@
 
 # nx-router
 
-`nx-router` is a declarative URL routing extension for [Nyxt](https://nyxt.atlas.engineer/). In short, it's an abstraction around Nyxt request resource handlers that uses `router` objects to make it more convenient to handle routes. See [Examples](#org02473ed) for a walk-through on how to set up routers.  
+`nx-router` is a declarative URL routing extension for [Nyxt](https://nyxt.atlas.engineer/). In short, it's an abstraction around Nyxt request resource handlers that uses `router` objects to make it more convenient to handle routes. See [Examples](#org1b37b20) for a walk-through on how to set up routers.  
 
 The main drive behind `nx-router` is that I initially found Nyxt built-in handlers difficult to reason about and I soon became frustrated with how much imperative logic I had to maintain in my configuration. `nx-router` aims to simplify request resource handling in Nyxt with declarative redirects, blockers, and resource handlers. You may think of it as a more batteries-included `url-dispatching-handler`.  
 
@@ -53,12 +53,12 @@ This shows some example routers you'd set up inside the `router-mode` configurat
          (make-instance 'router:blocker
                         :name 'wonka
                         :route (match-hostname "www.wonka.inc")
-                        :instances-builder
-                        (make-instance 'router:instances-builder
-                                       :source "https://www.wonka.inc/instances.json"
-                                       :builder (lambda (instances)
+                        :routes-builder
+                        (make-instance 'router:routes-builder
+                                       :source "https://www.wonka.inc/routes.json"
+                                       :builder (lambda (routes)
                                                   (json:decode-json-from-string
-                                                   instances)))
+                                                   routes)))
                         :blocklist ".*/factory")
          (make-instance 'router:opener
                         :name 'wonka
@@ -68,13 +68,13 @@ This shows some example routers you'd set up inside the `router-mode` configurat
                         :redirect
                         '(("https://\\1.acme.org/\\2" . ".*/p/(\\w+)/(.*)")))))))
 
-The first router specifies a redirect so that any route of <https://example.org> that doesn't match the regexps `.*/$` or `.*/wiki$` will get redirected to <https://acme.org/example>. The second router sets a block-list for the router if its route matches the `.*/factory` PCRE and adds an `instances-builder` which will fetch a list of routes and append them to the router's. Note that the second router has a `name` slot, which will allow subsequent routers to inherit the parent-class slots. The third router instructs a resource to be opened upon route activation, and the fourth router uses regexp interpolation to redirect the `.*/p/(\\w+)/(.*)` regexp to `https://\\1.acme.org/\\2`, where `\\1` and `\\2` will be replaced with the corresponding capture groups.  
+The first router specifies a redirect so that any route of <https://example.org> that doesn't match the regexps `.*/$` or `.*/wiki$` will get redirected to <https://acme.org/example>. The second router sets a block-list for the router if its route matches the `.*/factory` PCRE and adds a `routes-builder` which will fetch a list of routes and append them to the router's. Note that the second router has a `name` slot, which will allow subsequent routers to inherit the parent-class slots. The third router instructs a resource to be opened upon route activation, and the fourth router uses regexp interpolation to redirect the `.*/p/(\\w+)/(.*)` regexp to `https://\\1.acme.org/\\2`, where `\\1` and `\\2` will be replaced with the corresponding capture groups.  
 
 All routers derive from a `router` parent class that holds common router settings:  
 
 -   **`name`:** a symbol for the name of the router which allows for router composition.
 -   **`route`:** the route to match for `router` activation, akin to the predicates used in Nyxt `auto-rules`. One of `match-domain`, `match-host`, `match-regex`, `match-port`, a user-defined function, or a PCRE.
--   **`instances-builder`:** this takes an `instances-builder` object, which in turn takes a source to retrieve instances from and a builder which assembles them into a list.
+-   **`routes-builder`:** this takes a `routes-builder` object, which in turn takes a source to retrieve routes from and a builder which assembles them into a list.
 -   **`toplevel-p` (default: `t`):** whether the router is meant to process only top-level requests.
 
 Do note the WebkitGTK renderer poses some limitations with requests. For example, some of them might not get processed because click events are obscured, and `iframes` cannot be redirected at all. To alleviate this, you can control whether only top-level requests should be processed . If you want all requests to be processed, including non top-level ones, for all routers by default you can configure the `router` user-class like this:  
@@ -176,29 +176,36 @@ Use a `redirector` router to match YouTube-like video URLs and MP3 files and red
                     :resource (lambda (url)
                                (eval-in-emacs `(mpv-start ,url)))))
 
-Pass an `instances-builder` to generate a list of instances that will be appended to the routes on router instantiation. Also provide `redirect` as a function to compute the redirect hostname to use. See [instances.lisp](instances.lisp) for some predefined builders for front-end providers.  
+Pass a `routes-builder` to generate a list of routes that will be added on router instantiation. Also provide `redirect` as a function to compute the redirect hostname to use.  
 
-    (defun set-invidious-instance ()
-      "Set the primary Invidious instance."
-      (let ((instances
+    (defun set-invidious-redirect ()
+      "Set the primary Invidious redirect URL."
+      (let ((routes
               (remove-if-not
-               (lambda (instance)
-                 (and (string= (alex:assoc-value (second instance)
+               (lambda (route)
+                 (and (string= (alex:assoc-value (second route)
                                                  :region)
                                "DE")
-                      (string= (alex:assoc-value (second instance)
+                      (string= (alex:assoc-value (second route)
                                                  :type)
                                "https")))
                (json:with-decoder-simple-list-semantics
                  (json:decode-json-from-string
                   (dex:get
                    "https://api.invidious.io/instances.json"))))))
-        (first (car instances))))
+        (first (car routes))))
     
     (make-instance 'router:redirector
                    :route (match-domain "youtube.com" "youtu.be")
-                   :redirect #'set-invidious-instance
-                   :instances-builder router:invidious-instances-builder)
+                   :redirect #'set-invidious-redirect
+                   :routes-builder
+                   (make-instance 'routes-builder
+                                  :source "https://api.invidious.io/instances.json"
+                                  :builder
+                                  (lambda (routes)
+                                    (mapcar 'first
+                                            (json:with-decoder-simple-list-semantics
+                                              (json:decode-json-from-string routes))))))
 
 If you'd like to redirect a route to a URL with a scheme other than HTTPS or a non-standard port, you need to supply `redirect` as a `quri:uri` object. For example, this sets up a router that redirects Google results to a locally-running [whoogle-search](https://github.com/benbusby/whoogle-search) instance:  
 
@@ -213,9 +220,4 @@ Use a router with an exception-based `blocklist` for <https://github.com>. These
     (make-instance 'router:blocker
                    :route (match-domain "github.com")
                    :blocklist '(or ".*://[^/]*/[^/]*$" (not ".*/pulls.*" ".*/search.*")))
-
-
-## Contributing
-
-Feel free to open an issue with bug reports or feature requests. PRs are more than welcome too.  
 

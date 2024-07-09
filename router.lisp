@@ -7,6 +7,32 @@
   (and (listp object)
        (every #'listp object)))
 
+(define-class routes-builder ()
+  ((source
+    nil
+    :type (or quri:uri string null))
+   (builder
+    nil
+    :type (or function symbol null)))
+  (:export-class-name-p t)
+  (:export-slot-names-p t)
+  (:export-accessor-names-p t)
+  (:documentation "A routes builder for a router."))
+
+(defun fetch-routes (url)
+  (handler-case (dex:get url)
+    (usocket:ns-host-not-found-error ()
+      (nyxt:echo-warning
+       "There's no Internet connection to retrieve routes")
+      nil)))
+
+(defgeneric build-routes (routes-builder)
+  (:documentation "Build a list of routes from ROUTES-BUILDER."))
+
+(defmethod build-routes ((routes-builder routes-builder))
+  (alex:when-let ((routes (fetch-routes (source routes-builder))))
+    (delete nil (funcall (builder routes-builder) routes))))
+
 (define-class router ()
   ((name
     nil
@@ -15,11 +41,11 @@
     nil
     :type (or null string list function)
     :documentation "Route(s) to determine if `router' is to be activated.")
-   (instances-builder
+   (routes-builder
     nil
-    :type (maybe (list-of instances-builder))
-    :documentation "An `instances-builder' object that holds the necessary setup
-to build a list of instances for a service provider.  These will be appended to
+    :type (maybe (list-of routes-builder))
+    :documentation "A `routes-builder' object that holds the necessary setup
+to build a list of routes for a `router'.  These will be appended to
 the router's `route'.")
    (toplevel-p
     t
@@ -127,27 +153,27 @@ the current URL as argument, and can be given in a `format'-like syntax."))
                      'handle-routing))
 
 (defmethod initialize-instance :after ((router router) &key)
-  (with-slots (instances-builder route) router
+  (with-slots (routes-builder route) router
     (nyxt:run-thread "nx-router build routes"
-      (flet ((construct-predicates (sources)
-               (mapcar (lambda (instance)
+      (flet ((construct-predicates (routes)
+               (mapcar (lambda (r)
                          `(nyxt:match-host
-                           ,(if (quri:uri-http-p (quri:uri instance))
+                           ,(if (quri:uri-http-p (quri:uri r))
                                 (str:join
                                  ""
                                  (str:split-omit-nulls
                                   "/"
-                                  (nyxt::schemeless-url (quri:uri instance))))
-                                instance)))
-                       sources)))
-        (alex:when-let ((instances (and instances-builder
-                                        (build-instances instances-builder))))
+                                  (nyxt::schemeless-url (quri:uri r))))
+                                r)))
+                       routes)))
+        (alex:when-let ((routes (and routes-builder
+                                     (build-routes routes-builder))))
           (cond
             ((list-of-lists-p route)
              (setf (route router)
-                   (append route (construct-predicates instances))))
+                   (append route (construct-predicates routes))))
             (t (setf (route router)
-                     (cons route (construct-predicates instances))))))))))
+                     (cons route (construct-predicates routes))))))))))
 
 (-> match-by-redirect (quri:uri router-mode) maybe-list-of-routers)
 (defun match-by-redirect (url mode)
@@ -189,7 +215,7 @@ the current URL as argument, and can be given in a `format'-like syntax."))
            ((list-of-lists-p route)
             (routes-match-p route))
            ((listp route)
-            (if (instances-builder router)
+            (if (routes-builder router)
                 (routes-match-p route)
                 (funcall (eval route) url)))
            ((functionp route)
