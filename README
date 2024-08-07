@@ -1,17 +1,15 @@
-# -*- mode: org; org-html-head-include-default-style: nil; org-html-postamble: nil; after-save-hook: org-md-export-to-markdown; -*-
+# -*- mode: org; org-html-head-include-default-style: nil; org-html-postamble: nil; -*-
 #+OPTIONS: toc:nil num:nil
 * nx-router
 =nx-router= is a declarative URL routing extension for [[https://nyxt.atlas.engineer/][Nyxt]]. In short, it's an abstraction around Nyxt request resource handlers that uses =router= objects to make it more convenient to handle routes. See [[*Examples][Examples]] for a walk-through on how to set up routers.
 
 The main drive behind =nx-router= is that I initially found Nyxt built-in handlers difficult to reason about and I soon became frustrated with how much imperative logic I had to maintain in my configuration. =nx-router= aims to simplify request resource handling in Nyxt with declarative redirects, blockers, and resource handlers. You may think of it as a more batteries-included =url-dispatching-handler=.
 
-[[https://github.com/kssytsrk/nx-freestance-handler][nx-freestance-handler]] is a similar extension that provides handlers for popular privacy-friendly front-ends. However, this has the limitation that it only works with a few sites and makes you  reliant on its maintainer updating the extension to add new handlers or modify existing ones.
-
 ** Installation
 To install the extension, you need to download the source and place it in Nyxt's extensions path, given by the value of =nyxt-source-registry= (by default =~/.local/share/nyxt/extensions=).
 
 #+begin_src sh
-git clone https://github.com/migalmoreno/nx-router ~/.local/share/nyxt/extensions/nx-router
+git clone https://git.migalmoreno.com/nx-router ~/.local/share/nyxt/extensions/nx-router
 #+end_src
 
 The extension works with *Nyxt 3 onward* but it's encouraged to use it with the latest version of Nyxt master for the time being.
@@ -140,9 +138,8 @@ You can include a =:reverse= slot in the =redirector= router with a =quri:uri= o
   (call-next-method mode (router:trace-url url)))
 #+end_src
 
-
 ** Examples
-Redirect YouTube requests that match certain regexps to their corresponding [[https://github.com/migalmoreno/tubo][Tubo]] counterparts.
+Redirect YouTube requests that match certain regexps to their corresponding [[https://git.migalmoreno.com/tubo][Tubo]] counterparts.
 
 #+begin_src lisp
 (make-instance 'router:redirector
@@ -232,9 +229,7 @@ Pass a =routes-builder= to generate a list of routes that will be added on route
                                 (mapcar 'first
                                         (json:with-decoder-simple-list-semantics
                                           (json:decode-json-from-string routes))))))
-  #+end_src
-
-If you'd like to redirect a route to a URL with a scheme other than HTTPS or a non-standard port, you need to supply =redirect= as a =quri:uri= object. For example, this sets up a router that redirects Google results to a locally-running [[https://github.com/benbusby/whoogle-search][whoogle-search]] instance:
+#+end_src
 
 If you want to randomize your =redirect= between a list of hosts, you can use a service like [[https://sr.ht/~benbusby/farside/][Farside]] and write a router along these lines:
 
