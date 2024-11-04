@@ -1,11 +1,11 @@
 # -*- mode: org; org-html-head-include-default-style: nil; org-html-postamble: nil; -*-
 #+OPTIONS: toc:nil num:nil
-* nx-router
+#+TITLE: nx-router
 =nx-router= is a declarative URL routing extension for [[https://nyxt.atlas.engineer/][Nyxt]]. In short, it's an abstraction around Nyxt request resource handlers that uses =router= objects to make it more convenient to handle routes. See [[*Examples][Examples]] for a walk-through on how to set up routers.
 
 The main drive behind =nx-router= is that I initially found Nyxt built-in handlers difficult to reason about and I soon became frustrated with how much imperative logic I had to maintain in my configuration. =nx-router= aims to simplify request resource handling in Nyxt with declarative redirects, blockers, and resource handlers. You may think of it as a more batteries-included =url-dispatching-handler=.
 
-** Installation
+* Installation
 To install the extension, you need to download the source and place it in Nyxt's extensions path, given by the value of =nyxt-source-registry= (by default =~/.local/share/nyxt/extensions=).
 
 #+begin_src sh
@@ -33,7 +33,7 @@ In your Nyxt configuration file, place the following.
   :components ("router.lisp"))
 #+end_src
 
-Where =router.lisp= is a custom file that should you should create relative to Nyxt's configuration directory (=*config-file*='s pathname by default) to provide the extension settings after the =nx-router= system has been successfully loaded. Inside this file, place the following.
+Where =router.lisp= is a custom file that you should create relative to Nyxt's configuration directory (=*config-file*='s pathname by default) to provide the extension settings after the =nx-router= system has been successfully loaded. Inside this file, place the following.
 
 #+begin_src lisp
 (define-configuration web-buffer
@@ -42,7 +42,7 @@ Where =router.lisp= is a custom file that should you should create relative to N
 
 In addition, you should add the extension options, explained in the following section.
 
-** Configuration
+* Configuration
 This shows some example routers you'd set up inside the =router-mode= configuration class:
 
 #+begin_src lisp
@@ -138,7 +138,7 @@ You can include a =:reverse= slot in the =redirector= router with a =quri:uri= o
   (call-next-method mode (router:trace-url url)))
 #+end_src
 
-** Examples
+* Examples
 Redirect YouTube requests that match certain regexps to their corresponding [[https://git.migalmoreno.com/tubo][Tubo]] counterparts.
 
 #+begin_src lisp
