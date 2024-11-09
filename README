@@ -139,15 +139,15 @@ You can include a =:reverse= slot in the =redirector= router with a =quri:uri= o
 #+end_src
 
 * Examples
-Redirect YouTube requests that match certain regexps to their corresponding [[https://git.migalmoreno.com/tubo][Tubo]] counterparts.
+Redirect YouTube requests that match certain regexps to their corresponding [[https://migalmoreno.com/projects/tubo.html][Tubo]] counterparts.
 
 #+begin_src lisp
 (make-instance 'router:redirector
                :route (match-domain "youtube.com")
                :redirect
-               '(("https://tubo.migalmoreno.com/stream?url=\\&" . (".*/watch\\?v.*" ".*/shorts/.*"))
-                 ("https://tubo.migalmoreno.com/playlist?list=\\&" . ".*/playlist/.*")
-                 ("https://tubo.migalmoreno.com/channel?url=\\&" . ".*/channel/.*")))
+               '(("https://tubo.media/stream?url=\\&" . (".*/watch\\?v.*" ".*/shorts/.*"))
+                 ("https://tubo.media/playlist?list=\\&" . ".*/playlist/.*")
+                 ("https://tubo.media/channel?url=\\&" . ".*/channel/.*")))
 #+end_src
 
 Set up a redirect for all Instagram requests except those that match the regexps =.*/tv/.*= or =.*/reels/.*= to https://picuki.com/profile/, and redirect routes that match the regexp =.*/p/(.*)= to =https://picuki.com/media/\\1=, where the replacement string =\\1= will be replaced by the =(.*)= capture group in the URL.
