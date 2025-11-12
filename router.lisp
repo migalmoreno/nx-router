@@ -33,6 +33,15 @@
   (alex:when-let ((routes (fetch-routes (source routes-builder))))
     (delete nil (funcall (builder routes-builder) routes))))
 
+(defun maybe-list-of-routes-builder-p (list)
+  "Return t if LIST is null or a list of `routes-builder' objects."
+  (or (null list)
+      (and (consp list)
+           (every #'routes-builder-p list))))
+
+(deftype maybe-list-of-routes-builder ()
+  `(satisfies maybe-list-of-routes-builder-p))
+
 (define-class router ()
   ((name
     nil
@@ -43,7 +52,7 @@
     :documentation "Route(s) to determine if `router' is to be activated.")
    (routes-builder
     nil
-    :type (maybe (list-of routes-builder))
+    :type maybe-list-of-routes-builder
     :documentation "A `routes-builder' object that holds the necessary setup
 to build a list of routes for a `router'.  These will be appended to
 the router's `route'.")
