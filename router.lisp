@@ -323,7 +323,7 @@ redirect.  If REVERSED, reverse the redirection."
                       '())))))
     (with-slots (reverse redirect route) router
       (cond
-        ((stringp route)
+        ((and (stringp route) (not (consp redirect)))
          (quri:uri
           (if (ppcre:scan route (render-url url))
               (ppcre:regex-replace
